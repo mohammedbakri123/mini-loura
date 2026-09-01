@@ -173,3 +173,8 @@ npm run build
 ### Stage 2: Operational Model (Source of Truth)
 - **Historical Events vs Derived State:** Events stored in `events` are the historical facts. The tables `products`, `inventory`, `suppliers`, and `purchase_orders` represent the derived current operational reality. 
 - **Context Builder:** The `OperationalContextBuilder` pulls together related operational state (like a product and its open purchase orders) to give the agent accurate context without making it hallucinate reality. The LLM is NEVER the source of truth for the warehouse's current state.
+
+### Stage 3: Operational Cases
+- **Case Lifecycle:** Established a durable `CaseService` taking over from the foundation wiring to formally track problems (e.g., `inventory_replenishment`). 
+- **Identity & Concurrency:** Case deduplication is mathematically guaranteed by the `cases` table's partial unique index on `(subject_type, subject_id)` where `status != 'RESOLVED'`.
+- **Case Context:** The `CaseContextBuilder` packages the `CaseRecord`, associated events (`case_events`), and the authoritative `OperationalContext` for future reasoning.

@@ -25,6 +25,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyCors from "@fastify/cors";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 
 export function buildApp(deps: AppDependencies): FastifyInstance {
   const app = Fastify({
@@ -59,18 +60,24 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
   // Use any to bypass fastify typing mismatch on some setups
   app.register(fastifyCors as any, { origin: true });
 
-  // Serve static web app if it exists
-  app.register(fastifyStatic as any, {
-    root: path.join(__dirname, "../../web/dist"),
-    prefix: "/",
-    wildcard: false,
-  });
+  // Serve static web app if it exists (in local dev)
+  // Vercel serverless functions do not have access to the frontend dist folder.
+  const webDistPath = path.join(__dirname, "../../web/dist");
+  if (fs.existsSync(webDistPath)) {
+    app.register(fastifyStatic as any, {
+      root: webDistPath,
+      prefix: "/",
+      wildcard: false,
+    });
+  }
 
   app.setNotFoundHandler((request, reply) => {
     if (request.url.startsWith("/api/")) {
       reply.code(404).send({ error: "Not Found" });
-    } else {
+    } else if (reply.sendFile) {
       reply.sendFile("index.html");
+    } else {
+      reply.code(404).send({ error: "Not Found" });
     }
   });
 

@@ -124,6 +124,21 @@ Currently ingested `inventory.low` events are persisted, published, applied to t
 
 Supported event types: `inventory.low`, `inventory.updated`, `purchase_order.created`, `purchase_order.received`, `purchase_order.cancelled`.
 
+Execute + verify (Stage 7 closes the loop automatically after execution):
+
+```bash
+# Executes an authorized action, then verifies it against authoritative state.
+curl -X POST http://localhost:3000/cases/<caseId>/execute \
+  -H 'content-type: application/json' \
+  -d '{ "governanceEvaluationId": "<id>", "parameters": { "productId": "...", "quantity": 20, "supplierId": "..." } }'
+# -> { "executed": true, "executionId": "...", "verification": { "status": "VERIFIED", ... } }
+
+# Repeat/retry verification for a specific execution.
+curl -X POST http://localhost:3000/cases/<caseId>/verify \
+  -H 'content-type: application/json' \
+  -d '{ "actionExecutionId": "<id>" }'
+```
+
 ### Tests
 
 ```bash
@@ -143,14 +158,15 @@ npm run build
 - `FakeReasoningModel` + governed agent boundary
 - Deterministic policy engine (`ALLOW` / `DENY` / `REQUIRE_HUMAN_APPROVAL`)
 - Append-only audit ledger (in-memory + PostgreSQL)
-- PostgreSQL repositories for events, cases, audit, execution; SQL migration runner
-- 70 tests (unit + integration), TypeScript strict mode
+- PostgreSQL repositories for events, cases, audit, execution, verification; SQL migration runner
+- 94 tests (unit + integration), TypeScript strict mode
 - `create_purchase_order` executor with exact structural parameter binding and idempotency
+- **Closed-loop verification** (Stage 7): strategies, durable records, case transitions, audit events
 
 **Interfaces/stubs only (intentionally not yet implemented):**
 
 - Agent tool *handlers* (`getInventory`, `getProduct`, …) — declared, invocation fails loudly
-- Verification strategies — `ImmediateVerifier` exists; no checks registered until Stage 7
+- Delayed/polling verification strategies — `ImmediateVerifier` covers the current action set; timing parameters reserved
 - Operational model — in-memory only; DB persistence in Stage 2
 - Case engine — only `OPEN` creation; full lifecycle in Stage 3
 - `LLMReasoningModel` — interface ready, implementation deferred
@@ -195,3 +211,12 @@ npm run build
 - **Fail Closed:** Unknown actions, missing governance records, parameter mismatches (tampering attempts), or `DENY`/`REQUIRE_HUMAN_APPROVAL` states result in instant rejection without execution.
 - **Database-Enforced Idempotency:** The `action_executions` table tracks all side-effect executions against a deterministic `idempotency_key` via a unique constraint, protecting against network/process retries and duplicate operations.
 - **Case Lifecycle:** Successfully executing an action automatically transitions the Case to `VERIFYING`, waiting for closed-loop confirmation (Stage 7).
+
+### Stage 7: Closed-Loop Verification
+- **Independence Principle:** An action is not considered successful merely because the executor says it succeeded. The `VerificationService` re-derives the *authorized* expected state from the `governance_evaluations` record bound to the execution and independently queries the authoritative repository (`purchase_orders`).
+- **Strategy Abstraction:** `VerificationStrategy` implementations own the per-action rules; the service only orchestrates. `CREATE_PURCHASE_ORDER` is verified by `PurchaseOrderVerificationStrategy`: PO exists AND product/quantity/supplier match AND status is `created`. Any mismatch, missing reference, or unknown action **fails closed**.
+- **Durable Records:** Every attempt is persisted in `action_verifications` (expected/actual JSONB, strategy, reason). Verification is repeatable — `FAILED` attempts accumulate, but a partial unique index guarantees at most one `VERIFIED` record per execution.
+- **Action Failure ≠ Verification Failure:** Verifications only apply to `SUCCEEDED` executions; a failed *execution* throws `ActionExecutionNotSuccessfulError` and never produces a verification record.
+- **Case Lifecycle:** Stage 7 owns the transition out of `VERIFYING` via the case state machine: `VERIFYING → RESOLVED` on success, `VERIFYING → FAILED` on failure, and `FAILED → RESOLVED` is supported on a later successful re-verification. No direct SQL status writes.
+- **API:** `POST /cases/:id/execute` auto-verifies after execution; `POST /cases/:id/verify` (body: `actionExecutionId`) triggers or repeats verification. The audit ledger records `VERIFICATION_STARTED`, `VERIFICATION_SUCCEEDED`, `VERIFICATION_FAILED`.
+

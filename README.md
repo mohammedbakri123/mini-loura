@@ -32,14 +32,14 @@ Mini-Loura is built as a modular monolith demonstrating an operational AI loop.
 4. **Governance Layer:** Deterministic policies evaluate the AI's proposal based strictly on the parameters.
 5. **Execution Layer:** If allowed by Governance, the system executes the action idempotently.
 6. **Verification Layer:** A closed-loop check ensures the authoritative system state actually reflects the expected side-effect.
-7. **Audit:** Every step of the way is cryptographically ledgered for observability.
+7. **Audit:** Every step of the way is recorded in an append-only ledger for observability.
 
 ## Security model
 
 * **AI is not authority:** The AI produces a *proposal*, not a side-effect.
 * **Registered tools only:** The system maps the proposal to predefined schemas.
 * **Deterministic governance:** Configuration sets hard boundaries (e.g., maximum auto-approve quantities).
-* **Exact structural parameter binding:** The parameters evaluated by governance are cryptographically bound to the executor; they cannot be tampered with between evaluation and execution.
+* **Exact structural parameter binding:** The parameters evaluated by governance are structurally bound to the executor; they cannot be tampered with between evaluation and execution.
 * **Idempotent action execution:** Double execution is mitigated durably.
 * **Independent verification:** We don't ask the AI if it succeeded. We verify the actual underlying state.
 * **Audit trail:** An append-only log of every state transition.

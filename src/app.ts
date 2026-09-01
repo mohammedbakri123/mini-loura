@@ -10,7 +10,7 @@ export interface AppDependencies {
   databaseHealthCheck: () => Promise<boolean>;
   caseRepository?: import("./db/repositories/case-repository.js").CaseRepository;
   eventRepository?: import("./db/repositories/event-repository.js").EventRepository;
-  auditLedger?: import("./domain/audit/audit-ledger.js").AuditLedger;
+  auditLedger?: import("./audit/audit-ledger.js").AuditLedger;
   governanceRepository?: import("./db/repositories/governance-repository.js").GovernanceRepository;
   governanceService?: import("./governance/governance-service.js").GovernanceService;
   policyRepository?: import("./db/repositories/policy-repository.js").PolicyRepository;
@@ -217,13 +217,13 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
 
   app.get("/api/events", async () => {
     if (!deps.eventRepository) return [];
-    const all = await deps.eventRepository.findUnhandled();
+    const all = await deps.eventRepository.listRecent(100);
     return all;
   });
 
   // Helper for demo orchestration
   async function runDemoPipeline(eventData: any) {
-    if (!deps.ingestion || !deps.agent || !deps.executionService || !deps.governanceRepository) {
+    if (!deps.ingestion || !deps.agent || !deps.executionService || !deps.governanceRepository || !deps.governanceService) {
       throw new Error("Services not configured");
     }
 
@@ -261,7 +261,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     let evaluation;
     if (decision.decision === "PROPOSE_ACTION" && decision.action) {
       // Find the agent run ID we just created
-      const agentRun = (await deps.agentRunRepository?.findForCase(activeCase.id))?.[0];
+      const agentRun = (await deps.agentRunRepository?.listByCase(activeCase.id))?.[0];
       evaluation = await deps.governanceService.evaluate(decision, activeCase.id, agentRun?.id ?? null);
       
       // 4. Execution
@@ -269,7 +269,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
         try {
           const execResult = await deps.executionService.executeAuthorizedAction(
             activeCase.id,
-            evaluation.id ?? (await deps.governanceRepository.findForCase(activeCase.id))[0].id,
+            evaluation.id,
             decision.action
           );
 
@@ -324,7 +324,7 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
          try {
             await deps.executionService!.executeAuthorizedAction(
               res.caseId,
-              res.evaluation.id ?? (await deps.governanceRepository!.findForCase(res.caseId))[0].id,
+              res.evaluation.id,
               tamperedAction
             );
          } catch (err: any) {

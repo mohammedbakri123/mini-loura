@@ -16,7 +16,7 @@ export class GovernanceService {
     decision: AgentDecision,
     caseId: string,
     agentRunId: string | null
-  ): Promise<PolicyEvaluation | null> {
+  ): Promise<(PolicyEvaluation & { id: string }) | null> {
     if (decision.decision === "NO_ACTION" || decision.decision === "ESCALATE") {
       return null;
     }
@@ -33,7 +33,7 @@ export class GovernanceService {
     );
 
     // 2. Persist Governance Evaluation
-    await this.deps.governanceRepository.recordEvaluation(
+    const record = await this.deps.governanceRepository.recordEvaluation(
       caseId,
       agentRunId,
       decision.action.type,
@@ -81,6 +81,6 @@ export class GovernanceService {
       });
     }
 
-    return evaluation;
+    return { ...evaluation, id: record.id };
   }
 }

@@ -60,7 +60,7 @@ export interface AppRuntime {
   agent: OperationalAgent;
   caseRepository: import("./db/repositories/case-repository.js").PostgresCaseRepository;
   eventRepository: import("./db/repositories/event-repository.js").PostgresEventRepository;
-  auditLedger: import("./domain/audit/audit-ledger.js").AuditLedger;
+  auditLedger: import("./audit/audit-ledger.js").AuditLedger;
   governanceRepository: import("./db/repositories/governance-repository.js").PostgresGovernanceRepository;
   policyRepository: import("./db/repositories/policy-repository.js").PostgresPolicyRepository;
   productRepository: import("./db/repositories/product-repository.js").PostgresProductRepository;

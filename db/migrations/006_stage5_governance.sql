@@ -11,7 +11,12 @@ CREATE TABLE IF NOT EXISTS policies (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_policies_action_type ON policies (action_type);
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='policies' AND column_name='action_type') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_policies_action_type ON policies (action_type)';
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS governance_evaluations (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

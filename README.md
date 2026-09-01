@@ -178,3 +178,8 @@ npm run build
 - **Case Lifecycle:** Established a durable `CaseService` taking over from the foundation wiring to formally track problems (e.g., `inventory_replenishment`). 
 - **Identity & Concurrency:** Case deduplication is mathematically guaranteed by the `cases` table's partial unique index on `(subject_type, subject_id)` where `status != 'RESOLVED'`.
 - **Case Context:** The `CaseContextBuilder` packages the `CaseRecord`, associated events (`case_events`), and the authoritative `OperationalContext` for future reasoning.
+
+### Stage 4: Governed Reasoning Agent
+- **Reasoning Loop & Case Investigation:** `OperationalAgent` wraps a `ReasoningModel` dependency. Upon investigating a case, it builds context, queries the model, and validates the `AgentDecision`. 
+- **Decisions without Authority:** The agent is mathematically locked into producing `PROPOSE_ACTION`, `NO_ACTION`, or `ESCALATE` along with a strictly formatted `ProposedAction`. Execution is **prohibited** inside the reasoning layer. 
+- **Security:** Model runs operate entirely on pre-loaded structure. The agent executes zero side effects. The loop natively persists each decision context into `agent_runs` for accountability.

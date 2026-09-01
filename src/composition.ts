@@ -16,11 +16,14 @@ import { EventPipeline } from "./runtime/event-pipeline.js";
 import { createDefaultToolRegistry } from "./agent/tools.js";
 import { createPurchaseOrderAction } from "./actions/purchase-order-action.js";
 import { ActionRegistry } from "./governance/action-registry.js";
-import { ImmediateVerifier } from "./verification/verifier.js";
-import { DeterministicPolicyEngine } from "./governance/policy-engine.js";
 import { FakeReasoningModel } from "./agent/models/fake-reasoning-model.js";
 import type { ReasoningModel } from "./agent/reasoning-model.js";
+import { ImmediateVerifier } from "./verification/verifier.js";
+import { DeterministicPolicyEngine } from "./governance/policy-engine.js";
 import type { EventBus } from "./sensing/event-bus.js";
+import { OperationalAgent } from "./agent/agent.js";
+import { PostgresAgentRunRepository } from "./db/repositories/agent-run-repository.js";
+import { CaseContextBuilder, OperationalContextBuilder } from "./model/context-builder.js";
 
 /**
  * Composition root for the PostgreSQL-backed application.
@@ -41,6 +44,7 @@ export interface AppRuntime {
   verifier: ImmediateVerifier;
   policyEngine: DeterministicPolicyEngine;
   reasoningModel: ReasoningModel;
+  agent: OperationalAgent;
   databaseHealthCheck: () => Promise<boolean>;
   close(): Promise<void>;
 }
@@ -90,6 +94,27 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
   const verifier = new ImmediateVerifier();
   const policyEngine = new DeterministicPolicyEngine();
   const reasoningModel = new FakeReasoningModel();
+  const agentRunRepository = new PostgresAgentRunRepository(db);
+
+  const operationalContextBuilder = new OperationalContextBuilder({
+    productRepository,
+    inventoryRepository,
+    supplierRepository,
+    purchaseOrderRepository,
+  });
+
+  const caseContextBuilder = new CaseContextBuilder({
+    caseRepository,
+    operationalContextBuilder,
+  });
+
+  const agent = new OperationalAgent({
+    reasoningModel,
+    caseContextBuilder,
+    toolRegistry,
+    agentRunRepository,
+    modelName: "fake-reasoning-model-v1",
+  });
 
   return {
     env,
@@ -102,6 +127,7 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     verifier,
     policyEngine,
     reasoningModel,
+    agent,
     databaseHealthCheck: () => checkDatabaseHealth(db),
     close: () => db.close(),
   };

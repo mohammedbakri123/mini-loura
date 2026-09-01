@@ -14,16 +14,22 @@ export interface ToolDefinition {
   inputExample: Record<string, unknown>;
 }
 
+export type ProposedAction = {
+  type: "CREATE_PURCHASE_ORDER";
+  productId: string;
+  supplierId?: string | null;
+  quantity: number;
+};
+
 export interface AgentDecision {
-  /** The registered action the agent proposes, e.g. "create_purchase_order". */
-  action: string;
-  parameters: unknown;
-  /** Short structured explanation for audit/debug purposes. No hidden CoT. */
-  reasoningSummary?: string;
+  decision: "NO_ACTION" | "PROPOSE_ACTION" | "ESCALATE";
+  rationale: string;
+  action?: ProposedAction;
+  confidence?: number;
 }
 
 export interface ReasoningModel {
-  decide(context: import("../model/context-builder.js").AgentContext): Promise<AgentDecision>;
+  reason(context: import("../model/context-builder.js").CaseContext): Promise<AgentDecision>;
 }
 
 // Re-exported so agent-layer modules can import AgentContext in one place.

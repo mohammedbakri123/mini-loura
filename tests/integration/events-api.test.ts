@@ -84,7 +84,7 @@ describe("events API (integration)", () => {
   });
 
   it("GET /health returns ok", async () => {
-    const response = await app.inject({ method: "GET", url: "/health" });
+    const response = await app.inject({ method: "GET", url: "/api/health" });
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.status).toBe("ok");
@@ -94,7 +94,7 @@ describe("events API (integration)", () => {
   it("POST /events accepts a valid event, creates a case, updates the model, and audits", async () => {
     const response = await app.inject({
       method: "POST",
-      url: "/events",
+      url: "/api/events",
       payload: inventoryLowEvent(),
     });
 
@@ -131,11 +131,11 @@ describe("events API (integration)", () => {
     const event = inventoryLowEvent();
     
     // First attempt -> accepted
-    const first = await app.inject({ method: "POST", url: "/events", payload: event });
+    const first = await app.inject({ method: "POST", url: "/api/events", payload: event });
     expect(first.statusCode).toBe(202);
 
     // Second attempt -> duplicate
-    const second = await app.inject({ method: "POST", url: "/events", payload: event });
+    const second = await app.inject({ method: "POST", url: "/api/events", payload: event });
     expect(second.statusCode).toBe(200);
     expect(second.json().status).toBe("duplicate");
 
@@ -147,12 +147,12 @@ describe("events API (integration)", () => {
   it("does not create duplicate cases for repeated low-stock events", async () => {
     const first = await app.inject({
       method: "POST",
-      url: "/events",
+      url: "/api/events",
       payload: inventoryLowEvent(),
     });
     const second = await app.inject({
       method: "POST",
-      url: "/events",
+      url: "/api/events",
       payload: inventoryLowEvent(),
     });
 
@@ -167,7 +167,7 @@ describe("events API (integration)", () => {
   it("POST /events rejects an invalid event with 400", async () => {
     const response = await app.inject({
       method: "POST",
-      url: "/events",
+      url: "/api/events",
       payload: { type: "not.a.real.event", eventId: "x", payload: {} },
     });
 
@@ -188,7 +188,7 @@ describe("events API (integration)", () => {
 
     const response = await app.inject({
       method: "POST",
-      url: "/events",
+      url: "/api/events",
       payload: inventoryLowEvent(),
     });
 

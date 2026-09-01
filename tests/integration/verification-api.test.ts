@@ -122,7 +122,7 @@ describe("verification API (integration)", () => {
 
     const response = await app.inject({
       method: "POST",
-      url: `/cases/${caseId}/execute`,
+      url: `/api/cases/${caseId}/execute`,
       payload: { governanceEvaluationId, parameters },
     });
 
@@ -144,7 +144,7 @@ describe("verification API (integration)", () => {
 
     const response = await app.inject({
       method: "POST",
-      url: `/cases/${caseId}/verify`,
+      url: `/api/cases/${caseId}/verify`,
       payload: { actionExecutionId: execution.id },
     });
 
@@ -160,7 +160,7 @@ describe("verification API (integration)", () => {
 
     // Attempt 1: no PO in authoritative state yet.
     const first = await app.inject({
-      method: "POST", url: `/cases/${caseId}/verify`,
+      method: "POST", url: `/api/cases/${caseId}/verify`,
       payload: { actionExecutionId: execution.id },
     });
     expect(first.json().status).toBe("FAILED");
@@ -173,7 +173,7 @@ describe("verification API (integration)", () => {
 
     // Attempt 2: authoritative state now matches.
     const second = await app.inject({
-      method: "POST", url: `/cases/${caseId}/verify`,
+      method: "POST", url: `/api/cases/${caseId}/verify`,
       payload: { actionExecutionId: execution.id },
     });
     expect(second.json().status).toBe("VERIFIED");
@@ -196,7 +196,7 @@ describe("verification API (integration)", () => {
     });
 
     const response = await app.inject({
-      method: "POST", url: `/cases/${attackerCase.id}/verify`,
+      method: "POST", url: `/api/cases/${attackerCase.id}/verify`,
       payload: { actionExecutionId: execution.id },
     });
     expect(response.statusCode).toBe(403);
@@ -210,7 +210,7 @@ describe("verification API (integration)", () => {
     });
 
     const response = await app.inject({
-      method: "POST", url: `/cases/${caseId}/verify`,
+      method: "POST", url: `/api/cases/${caseId}/verify`,
       payload: { actionExecutionId: execution.id },
     });
     expect(response.statusCode).toBe(409);
@@ -220,7 +220,7 @@ describe("verification API (integration)", () => {
   it("returns 400 when actionExecutionId is missing", async () => {
     const { caseId } = await seedCaseWithAllowance("VERIFYING");
     const response = await app.inject({
-      method: "POST", url: `/cases/${caseId}/verify`,
+      method: "POST", url: `/api/cases/${caseId}/verify`,
       payload: {},
     });
     expect(response.statusCode).toBe(400);

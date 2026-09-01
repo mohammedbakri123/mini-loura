@@ -1,11 +1,22 @@
 import type { OperationalEvent } from "../../domain/events/event.js";
+import { DatabaseError } from "pg";
+
+export class DuplicateEventError extends Error {
+  constructor(public readonly source: string, public readonly eventId: string) {
+    super(`Duplicate event: source=${source} eventId=${eventId}`);
+    this.name = "DuplicateEventError";
+  }
+}
 
 /**
- * Event persistence. `insert` must enforce deduplication on `external_id`.
+ * Event persistence.
  */
 export interface EventRepository {
+  /**
+   * Persists the event. Must throw DuplicateEventError if an event with the
+   * same (source, eventId) already exists.
+   */
   insert(event: OperationalEvent): Promise<void>;
-  existsByExternalId(externalId: string): Promise<boolean>;
   findById(id: string): Promise<OperationalEvent | null>;
   listRecent(limit: number): Promise<OperationalEvent[]>;
 }
@@ -14,26 +25,33 @@ export class PostgresEventRepository implements EventRepository {
   constructor(private readonly db: import("../client.js").Database) {}
 
   async insert(event: OperationalEvent): Promise<void> {
-    await this.db.query(
-      `INSERT INTO events (id, external_id, type, payload, occurred_at, received_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        event.id,
-        event.eventId,
-        event.type,
-        JSON.stringify(event.payload),
-        event.occurredAt,
-        event.receivedAt,
-      ],
-    );
-  }
-
-  async existsByExternalId(externalId: string): Promise<boolean> {
-    const result = await this.db.query<{ exists: boolean }>(
-      "SELECT EXISTS(SELECT 1 FROM events WHERE external_id = $1) AS exists",
-      [externalId],
-    );
-    return result.rows[0]?.exists === true;
+    try {
+      await this.db.query(
+        `INSERT INTO events (
+          id, event_id, event_type, source, entity_type, entity_id,
+          occurred_at, received_at, correlation_id, schema_version, payload
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          event.id,
+          event.eventId,
+          event.eventType,
+          event.source,
+          event.entityType,
+          event.entityId,
+          event.occurredAt,
+          event.receivedAt,
+          event.correlationId ?? null,
+          event.schemaVersion,
+          JSON.stringify(event.payload),
+        ],
+      );
+    } catch (err) {
+      if (err instanceof DatabaseError && err.code === "23505") { // unique_violation
+        throw new DuplicateEventError(event.source, event.eventId);
+      }
+      throw err;
+    }
   }
 
   async findById(id: string): Promise<OperationalEvent | null> {
@@ -56,41 +74,47 @@ export class PostgresEventRepository implements EventRepository {
 
 interface EventRow {
   id: string;
-  external_id: string;
-  type: OperationalEvent["type"];
-  payload: unknown;
+  event_id: string;
+  event_type: string;
+  source: string;
+  entity_type: string;
+  entity_id: string;
   occurred_at: Date;
   received_at: Date;
+  correlation_id: string | null;
+  schema_version: number;
+  payload: unknown;
 }
 
 function mapRow(row: EventRow): OperationalEvent {
-  // The row's type/payload correlation is re-established from the database's
-  // validated record; the cast is scoped to this mapping boundary.
   return {
     id: row.id,
-    eventId: row.external_id,
-    type: row.type,
-    payload: row.payload,
+    eventId: row.event_id,
+    eventType: row.event_type as OperationalEvent["eventType"],
+    source: row.source,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
     occurredAt: new Date(row.occurred_at).toISOString(),
     receivedAt: new Date(row.received_at).toISOString(),
+    correlationId: row.correlation_id ?? undefined,
+    schemaVersion: row.schema_version,
+    payload: row.payload,
   } as OperationalEvent;
 }
 
 /** In-memory implementation for local development and tests. */
 export class InMemoryEventRepository implements EventRepository {
   private readonly events = new Map<string, OperationalEvent>();
-  private readonly externalIds = new Set<string>();
+  // Stores composite keys: "source:eventId"
+  private readonly identityKeys = new Set<string>();
 
   async insert(event: OperationalEvent): Promise<void> {
-    if (this.externalIds.has(event.eventId)) {
-      throw new Error(`Duplicate external event id: ${event.eventId}`);
+    const key = `${event.source}:${event.eventId}`;
+    if (this.identityKeys.has(key)) {
+      throw new DuplicateEventError(event.source, event.eventId);
     }
-    this.externalIds.add(event.eventId);
+    this.identityKeys.add(key);
     this.events.set(event.id, event);
-  }
-
-  async existsByExternalId(externalId: string): Promise<boolean> {
-    return this.externalIds.has(externalId);
   }
 
   async findById(id: string): Promise<OperationalEvent | null> {

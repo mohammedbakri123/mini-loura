@@ -16,13 +16,16 @@ export type CaseStatus =
   | "REOPENED";
 
 export type CaseType = "inventory_replenishment" | "generic";
+export type CasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export interface CaseRecord {
   id: string;
   type: CaseType;
   status: CaseStatus;
+  priority: CasePriority;
   title: string;
-  /** The domain entity the case is about (e.g. a productId). */
+  /** The domain entity the case is about (e.g. product). */
+  subjectType: string;
   subjectId: string;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +35,8 @@ export interface CaseRecord {
 export interface NewCaseRecord {
   type: CaseType;
   status: CaseStatus;
+  priority: CasePriority;
   title: string;
+  subjectType: string;
   subjectId: string;
 }

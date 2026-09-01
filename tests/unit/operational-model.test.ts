@@ -142,4 +142,41 @@ describe("RepositoryOperationalModel and ContextBuilder", () => {
     expect(context?.openPurchaseOrders).toHaveLength(1);
     expect(context?.openPurchaseOrders[0]?.id).toBe(poId);
   });
+  it("builds case context correctly", async () => {
+    await model.applyEvent({
+      id: "evt-uuid-1",
+      eventId: "ext-1",
+      eventType: "inventory.updated",
+      source: "warehouse-a",
+      entityType: "product",
+      entityId: productId,
+      occurredAt: new Date().toISOString(),
+      receivedAt: new Date().toISOString(),
+      schemaVersion: 1,
+      payload: { productId, currentStock: 15, minimumStock: 50 },
+    });
+    
+    const caseRepo = new (await import("../../src/db/repositories/case-repository.js")).InMemoryCaseRepository();
+    const createdCase = await caseRepo.create({
+      type: "inventory_replenishment",
+      status: "OPEN",
+      priority: "HIGH",
+      title: "Test Case",
+      subjectType: "product",
+      subjectId: productId,
+    });
+    await caseRepo.addEvent(createdCase.id, "evt-uuid-1");
+
+    const caseBuilder = new (await import("../../src/model/context-builder.js")).CaseContextBuilder({
+      caseRepository: caseRepo,
+      operationalContextBuilder: builder,
+    });
+
+    const caseContext = await caseBuilder.build(createdCase.id);
+    expect(caseContext).not.toBeNull();
+    expect(caseContext?.caseRecord.subjectType).toBe("product");
+    expect(caseContext?.relatedEvents).toContain("evt-uuid-1");
+    expect(caseContext?.operationalContext?.product.id).toBe(productId);
+    expect(caseContext?.operationalContext?.inventory?.currentStock).toBe(15);
+  });
 });

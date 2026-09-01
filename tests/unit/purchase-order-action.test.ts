@@ -13,13 +13,16 @@ describe("CREATE_PURCHASE_ORDER action definition", () => {
     expect(good.success).toBe(true);
   });
 
-  it("produces a stable idempotency key for identical parameters", () => {
+  it("produces a stable idempotency key for identical parameters and distinct for different ones", () => {
     const action = createPurchaseOrderAction();
-    const params = { productId, quantity: 50 };
-    expect(action.idempotencyKey(params)).toBe(action.idempotencyKey(params));
-    expect(action.idempotencyKey(params)).toBe(
-      `CREATE_PURCHASE_ORDER:${productId}:50:any-supplier`,
-    );
+    const params1 = { productId, quantity: 50 };
+    const params2 = { productId, quantity: 51 };
+    const key1 = action.idempotencyKey(params1);
+    const key2 = action.idempotencyKey(params2);
+
+    expect(key1).toBe(action.idempotencyKey(params1)); // stable
+    expect(key1).toContain("CREATE_PURCHASE_ORDER:");
+    expect(key1).not.toBe(key2); // distinct parameters give distinct keys
   });
 
   it("declares its verification strategy and expected side effect", () => {

@@ -140,8 +140,9 @@ export class InMemoryPurchaseOrderRepository implements PurchaseOrderRepository 
 
   async create(input: NewPurchaseOrder): Promise<PurchaseOrder> {
     if (input.idempotencyKey) {
-      const existing = await this.findByIdempotencyKey(input.idempotencyKey);
-      if (existing) return existing;
+      for (const po of this.pos.values()) {
+        if (po.idempotencyKey === input.idempotencyKey) return po;
+      }
     }
 
     const full: PurchaseOrder = {

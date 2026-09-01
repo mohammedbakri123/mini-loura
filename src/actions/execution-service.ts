@@ -39,7 +39,7 @@ export class ExecutionService {
       throw new ExecutionNotAuthorizedError(`Action not authorized. Decision was: ${govEval.decision}`);
     }
 
-    // Cryptographic / structural binding check
+    // Exact structural parameter binding check
     try {
       assert.deepStrictEqual(parameters, govEval.parameters);
     } catch {
@@ -49,32 +49,43 @@ export class ExecutionService {
     const actionDef = this.deps.actionRegistry.get(govEval.actionType);
     const idempotencyKey = actionDef.idempotencyKey(parameters);
 
-    // Idempotent retry logic
-    let execution = await this.deps.executionRepo.findByIdempotencyKey(idempotencyKey);
-    
-    if (execution?.status === "SUCCEEDED") {
+    // Concurrency safe execution creation
+    const { record: execution, created } = await this.deps.executionRepo.createIfAbsent({
+      caseId,
+      governanceEvaluationId,
+      actionType: govEval.actionType,
+      idempotencyKey,
+      status: "STARTED",
+    });
+
+    if (execution.status === "SUCCEEDED") {
       return {
         executed: true,
-        referenceId: execution.referenceId,
+        referenceId: execution.referenceId!,
         details: { replay: true },
       };
     }
 
-    if (!execution) {
-      execution = await this.deps.executionRepo.create({
-        caseId,
-        governanceEvaluationId,
-        actionType: govEval.actionType,
-        idempotencyKey,
-        status: "STARTED",
-      });
+    if (execution.status === "FAILED") {
+      throw new Error("Action execution previously failed and cannot be automatically retried. A new proposal is required.");
+    }
 
+    if (created) {
       await this.deps.auditLedger.append({
         type: "ACTION_REQUESTED",
         actor: "execution-service",
         caseId,
         eventId: null,
         data: { actionType: govEval.actionType, idempotencyKey },
+      });
+    } else if (execution.status === "STARTED") {
+      // It's a safe retry for a previously abandoned/crashed STARTED execution
+      await this.deps.auditLedger.append({
+        type: "ACTION_REQUESTED",
+        actor: "execution-service",
+        caseId,
+        eventId: null,
+        data: { actionType: govEval.actionType, idempotencyKey, retry: true },
       });
     }
 
@@ -101,22 +112,24 @@ export class ExecutionService {
       }
 
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Note: If error happens after DB commit but before this block, 
       // the next retry will replay the executor and succeed safely thanks to idempotent repo methods.
       await this.deps.executionRepo.updateStatus(execution.id, "FAILED");
+
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred during execution";
 
       await this.deps.auditLedger.append({
         type: "ACTION_FAILED",
         actor: "execution-service",
         caseId,
         eventId: null,
-        data: { actionType: govEval.actionType, error: error.message },
+        data: { actionType: govEval.actionType, error: errorMessage },
       });
 
       const caseRecord = await this.deps.caseRepo.findById(caseId);
       if (caseRecord?.status === "ACTING" || caseRecord?.status === "ACTION_REQUIRED") {
-        await this.deps.caseRepo.updateStatus(caseId, "FAILED", `Action failed: ${error.message}`);
+        await this.deps.caseRepo.updateStatus(caseId, "FAILED", `Action failed: ${errorMessage}`);
       }
 
       throw error;

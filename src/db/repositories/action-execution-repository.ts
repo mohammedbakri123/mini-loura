@@ -24,7 +24,7 @@ export interface NewActionExecution {
 }
 
 export interface ActionExecutionRepository {
-  create(input: NewActionExecution): Promise<ActionExecutionRecord>;
+  createIfAbsent(input: NewActionExecution): Promise<{ record: ActionExecutionRecord; created: boolean }>;
   findByIdempotencyKey(key: string): Promise<ActionExecutionRecord | null>;
   updateStatus(id: string, status: ActionExecutionStatus, referenceId?: string): Promise<ActionExecutionRecord>;
 }
@@ -44,13 +44,24 @@ interface ActionExecutionRow {
 export class PostgresActionExecutionRepository implements ActionExecutionRepository {
   constructor(private readonly db: Database) {}
 
-  async create(input: NewActionExecution): Promise<ActionExecutionRecord> {
+  async createIfAbsent(input: NewActionExecution): Promise<{ record: ActionExecutionRecord; created: boolean }> {
     const result = await this.db.query<ActionExecutionRow>(
       `INSERT INTO action_executions (case_id, governance_evaluation_id, action_type, idempotency_key, status)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING *`,
       [input.caseId, input.governanceEvaluationId, input.actionType, input.idempotencyKey, input.status]
     );
-    return mapRow(result.rows[0]!);
+    
+    if (result.rows[0]) {
+      return { record: mapRow(result.rows[0]), created: true };
+    }
+    
+    const existing = await this.findByIdempotencyKey(input.idempotencyKey);
+    if (!existing) {
+      throw new Error(`Failed to create or find action execution for idempotency key: ${input.idempotencyKey}`);
+    }
+    return { record: existing, created: false };
   }
 
   async findByIdempotencyKey(key: string): Promise<ActionExecutionRecord | null> {
@@ -77,10 +88,11 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
 export class InMemoryActionExecutionRepository implements ActionExecutionRepository {
   private readonly records = new Map<string, ActionExecutionRecord>();
 
-  async create(input: NewActionExecution): Promise<ActionExecutionRecord> {
-    const existing = await this.findByIdempotencyKey(input.idempotencyKey);
-    if (existing) {
-      throw new Error("duplicate key value violates unique constraint \"idx_action_executions_idempotency_key\"");
+  async createIfAbsent(input: NewActionExecution): Promise<{ record: ActionExecutionRecord; created: boolean }> {
+    for (const rec of this.records.values()) {
+      if (rec.idempotencyKey === input.idempotencyKey) {
+        return { record: rec, created: false };
+      }
     }
     
     const record: ActionExecutionRecord = {
@@ -95,7 +107,7 @@ export class InMemoryActionExecutionRepository implements ActionExecutionReposit
       updatedAt: new Date().toISOString(),
     };
     this.records.set(record.id, record);
-    return record;
+    return { record, created: true };
   }
 
   async findByIdempotencyKey(key: string): Promise<ActionExecutionRecord | null> {

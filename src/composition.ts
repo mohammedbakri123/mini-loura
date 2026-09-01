@@ -28,8 +28,8 @@ import { OperationalAgent } from "./agent/agent.js";
 import { PostgresAgentRunRepository } from "./db/repositories/agent-run-repository.js";
 import { CaseContextBuilder, OperationalContextBuilder } from "./model/context-builder.js";
 import { PostgresActionExecutionRepository } from "./db/repositories/action-execution-repository.js";
-import { ExecutionService } from "./actions/execution-service.js";
 import { PurchaseOrderExecutor } from "./actions/purchase-order-action.js";
+import { ExecutionService } from "./actions/execution-service.js";
 
 /**
  * Composition root for the PostgreSQL-backed application.
@@ -99,10 +99,10 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
   const toolRegistry = createDefaultToolRegistry();
   const actionRegistry = new ActionRegistry();
   
-  const executionRepository = new import("./db/repositories/action-execution-repository.js").PostgresActionExecutionRepository(db);
+  const executionRepository = new PostgresActionExecutionRepository(db);
 
   actionRegistry.register(createPurchaseOrderAction({
-    executor: new import("./actions/purchase-order-action.js").PurchaseOrderExecutor(purchaseOrderRepository, supplierRepository)
+    executor: new PurchaseOrderExecutor(purchaseOrderRepository, supplierRepository)
   }));
   
   const verifier = new ImmediateVerifier();
@@ -121,7 +121,7 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     auditLedger,
   });
 
-  const executionService = new import("./actions/execution-service.js").ExecutionService({
+  const executionService = new ExecutionService({
     actionRegistry,
     governanceRepo: governanceRepository,
     executionRepo: executionRepository,

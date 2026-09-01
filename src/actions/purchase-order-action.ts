@@ -66,9 +66,14 @@ export function createPurchaseOrderAction(options?: {
     verificationStrategy: "immediate",
     idempotencyKey: (parameters) => {
       const parsed = CreatePurchaseOrderInputSchema.parse(parameters);
-      return `CREATE_PURCHASE_ORDER:${parsed.productId}:${parsed.quantity}:${
-        parsed.supplierId ?? "any-supplier"
-      }`;
+      const crypto = require("node:crypto");
+      const hash = crypto.createHash("sha256").update(JSON.stringify({
+        action: "CREATE_PURCHASE_ORDER",
+        productId: parsed.productId,
+        quantity: parsed.quantity,
+        supplierId: parsed.supplierId ?? null
+      })).digest("hex");
+      return `CREATE_PURCHASE_ORDER:${hash}`;
     },
     // We throw an error if called without an executor, rather than providing an unimplemented one,
     // to ensure Stage 6 composition provides a real executor.

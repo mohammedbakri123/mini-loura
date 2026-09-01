@@ -112,7 +112,7 @@ describe("ExecutionService", () => {
     expect(pos.length).toBe(0);
   });
 
-  it("supports idempotent retries (process crash simulation)", async () => {
+  it("supports idempotent retries (process crash simulation for STARTED)", async () => {
     const parameters = { productId: validProductId, quantity: 100, supplierId };
     const govEval = await governanceRepo.recordEvaluation(
       "case-1", null, "CREATE_PURCHASE_ORDER",
@@ -123,7 +123,7 @@ describe("ExecutionService", () => {
     // First run
     const result1 = await executionService.executeAuthorizedAction("case-1", govEval.id, parameters);
     
-    // Retry exact same execution
+    // Retry exact same execution (simulate crash before result received but after SUCCEEDED)
     const result2 = await executionService.executeAuthorizedAction("case-1", govEval.id, parameters);
     
     expect(result1.referenceId).toBe(result2.referenceId);
@@ -133,8 +133,34 @@ describe("ExecutionService", () => {
     expect(pos.length).toBe(1); // Only 1 PO created
   });
 
+  it("handles concurrent execution races safely (one logical action != two side effects)", async () => {
+    const parameters = { productId: validProductId, quantity: 200, supplierId };
+    const govEval = await governanceRepo.recordEvaluation(
+      "case-2", null, "CREATE_PURCHASE_ORDER",
+      { decision: "ALLOW", ruleId: "rule-1", reason: "Ok" },
+      parameters
+    );
+
+    // Run two executions concurrently for the same parameters
+    const [result1, result2] = await Promise.all([
+      executionService.executeAuthorizedAction("case-2", govEval.id, parameters),
+      executionService.executeAuthorizedAction("case-2", govEval.id, parameters)
+    ]);
+
+    // Both should yield the same referenceId
+    expect(result1.referenceId).toBe(result2.referenceId);
+    // At least one of them should indicate it was a replay or both succeed
+    expect(result1.executed && result2.executed).toBe(true);
+
+    // Only one PO must be created for these parameters
+    const allPos = await poRepo.listOpen();
+    const specificPos = allPos.filter(po => po.items[0].quantity === 200);
+    expect(specificPos.length).toBe(1);
+  });
+
   it("refuses missing governance evaluation", async () => {
     await expect(executionService.executeAuthorizedAction("case-1", "missing-id", {}))
       .rejects.toThrowError(/Governance evaluation not found/);
   });
 });
+

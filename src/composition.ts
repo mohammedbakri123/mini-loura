@@ -57,6 +57,15 @@ export interface AppRuntime {
   verificationService: VerificationService;
   reasoningModel: ReasoningModel;
   agent: OperationalAgent;
+  caseRepository: import("./db/repositories/case-repository.js").PostgresCaseRepository;
+  eventRepository: import("./db/repositories/event-repository.js").PostgresEventRepository;
+  auditLedger: import("./domain/audit/audit-ledger.js").AuditLedger;
+  governanceRepository: import("./db/repositories/governance-repository.js").PostgresGovernanceRepository;
+  policyRepository: import("./db/repositories/policy-repository.js").PostgresPolicyRepository;
+  productRepository: import("./db/repositories/product-repository.js").PostgresProductRepository;
+  inventoryRepository: import("./db/repositories/inventory-repository.js").PostgresInventoryRepository;
+  supplierRepository: import("./db/repositories/supplier-repository.js").PostgresSupplierRepository;
+  agentRunRepository: import("./db/repositories/agent-run-repository.js").PostgresAgentRunRepository;
   databaseHealthCheck: () => Promise<boolean>;
   close(): Promise<void>;
 }
@@ -188,6 +197,15 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     executionService,
     reasoningModel,
     agent,
+    caseRepository,
+    eventRepository,
+    auditLedger,
+    governanceRepository,
+    policyRepository,
+    productRepository,
+    inventoryRepository,
+    supplierRepository,
+    agentRunRepository,
     databaseHealthCheck: () => checkDatabaseHealth(db),
     close: () => db.close(),
   };

@@ -14,6 +14,17 @@ async function main(): Promise<void> {
     executionService: runtime.executionService,
     verificationService: runtime.verificationService,
     databaseHealthCheck: runtime.databaseHealthCheck,
+    caseRepository: runtime.caseRepository,
+    eventRepository: runtime.eventRepository,
+    auditLedger: runtime.auditLedger,
+    governanceRepository: runtime.governanceRepository,
+    governanceService: runtime.governanceService,
+    policyRepository: runtime.policyRepository,
+    productRepository: runtime.productRepository,
+    inventoryRepository: runtime.inventoryRepository,
+    supplierRepository: runtime.supplierRepository,
+    agentRunRepository: runtime.agentRunRepository,
+    agent: runtime.agent,
   });
 
   const shutdown = async (signal: string) => {

@@ -3,102 +3,105 @@ import { z } from "zod";
 /**
  * Domain events emitted by external operational systems (warehouses, ERPs...).
  *
- * The Zod schemas here are the single source of truth for the shape of an
- * operational event. They are used by the sensing layer to validate raw input
- * before anything is persisted or published.
+ * The Zod schemas here define the expected shape of the incoming external payloads.
  */
 
-export const InventoryLowEventSchema = z.object({
-  type: z.literal("inventory.low"),
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime().optional(),
-  payload: z.object({
-    productId: z.string().uuid(),
-    productSku: z.string().min(1).optional(),
-    currentStock: z.number().int().min(0),
-    minimumStock: z.number().int().min(0),
-  }),
+export const InventoryLowPayloadSchema = z.object({
+  productId: z.string().uuid(),
+  productSku: z.string().min(1).optional(),
+  currentStock: z.number().int().min(0),
+  minimumStock: z.number().int().min(0),
 });
 
-export const InventoryUpdatedEventSchema = z.object({
-  type: z.literal("inventory.updated"),
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime().optional(),
-  payload: z.object({
-    productId: z.string().uuid(),
-    productSku: z.string().min(1).optional(),
-    currentStock: z.number().int().min(0),
-    minimumStock: z.number().int().min(0).optional(),
-  }),
+export const InventoryUpdatedPayloadSchema = z.object({
+  productId: z.string().uuid(),
+  productSku: z.string().min(1).optional(),
+  currentStock: z.number().int().min(0),
+  minimumStock: z.number().int().min(0).optional(),
 });
 
-export const PurchaseOrderCreatedEventSchema = z.object({
-  type: z.literal("purchase_order.created"),
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime().optional(),
-  payload: z.object({
-    purchaseOrderId: z.string().uuid(),
-    productId: z.string().uuid(),
-    supplierId: z.string().uuid().optional(),
-    quantity: z.number().int().positive(),
-  }),
+export const PurchaseOrderCreatedPayloadSchema = z.object({
+  purchaseOrderId: z.string().uuid(),
+  productId: z.string().uuid(),
+  supplierId: z.string().uuid().optional(),
+  quantity: z.number().int().positive(),
 });
 
-export const PurchaseOrderReceivedEventSchema = z.object({
-  type: z.literal("purchase_order.received"),
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime().optional(),
-  payload: z.object({
-    purchaseOrderId: z.string().uuid(),
-    quantityReceived: z.number().int().positive(),
-  }),
+export const PurchaseOrderReceivedPayloadSchema = z.object({
+  purchaseOrderId: z.string().uuid(),
+  quantityReceived: z.number().int().positive(),
 });
 
-export const PurchaseOrderCancelledEventSchema = z.object({
-  type: z.literal("purchase_order.cancelled"),
-  eventId: z.string().min(1),
-  occurredAt: z.string().datetime().optional(),
-  payload: z.object({
-    purchaseOrderId: z.string().uuid(),
-    reason: z.string().min(1).optional(),
-  }),
+export const PurchaseOrderCancelledPayloadSchema = z.object({
+  purchaseOrderId: z.string().uuid(),
+  reason: z.string().min(1).optional(),
 });
-
-export const OperationalEventSchema = z.discriminatedUnion("type", [
-  InventoryLowEventSchema,
-  InventoryUpdatedEventSchema,
-  PurchaseOrderCreatedEventSchema,
-  PurchaseOrderReceivedEventSchema,
-  PurchaseOrderCancelledEventSchema,
-]);
-
-export type ValidatedOperationalEvent = z.infer<typeof OperationalEventSchema>;
-
-export type OperationalEventType = ValidatedOperationalEvent["type"];
-
-export type OperationalEventPayload = ValidatedOperationalEvent["payload"];
 
 /**
- * An event after validation, enriched with system-side metadata:
- * - `id`: internal UUID assigned by this system at ingestion time
- * - `receivedAt`: when this system received the event
- * - `occurredAt`: made required after validation (defaults to now)
+ * Validated external event envelopes before normalization.
+ */
+export const ExternalWarehouseEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("inventory.low"),
+    eventId: z.string().min(1),
+    occurredAt: z.string().datetime().optional(),
+    payload: InventoryLowPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("inventory.updated"),
+    eventId: z.string().min(1),
+    occurredAt: z.string().datetime().optional(),
+    payload: InventoryUpdatedPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("purchase_order.created"),
+    eventId: z.string().min(1),
+    occurredAt: z.string().datetime().optional(),
+    payload: PurchaseOrderCreatedPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("purchase_order.received"),
+    eventId: z.string().min(1),
+    occurredAt: z.string().datetime().optional(),
+    payload: PurchaseOrderReceivedPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("purchase_order.cancelled"),
+    eventId: z.string().min(1),
+    occurredAt: z.string().datetime().optional(),
+    payload: PurchaseOrderCancelledPayloadSchema,
+  }),
+]);
+
+export type ExternalWarehouseEvent = z.infer<typeof ExternalWarehouseEventSchema>;
+
+type ExternalEventType = ExternalWarehouseEvent["type"];
+type ExternalPayload<T extends ExternalEventType> = Extract<ExternalWarehouseEvent, { type: T }>["payload"];
+
+/**
+ * The canonical operational event model used internally by Mini-Loura.
  *
- * Defined as a distributive mapped type so that narrowing on `type` keeps the
- * `payload` correlated with the event type.
+ * Event identity is defined strictly by the composite key `(source, eventId)`.
+ * A repeating `(source, eventId)` pair represents the same event and will be
+ * rejected as a duplicate.
  */
 export type OperationalEvent = {
-  [K in OperationalEventType]: Extract<ValidatedOperationalEvent, { type: K }> & {
-    id: string;
-    receivedAt: string;
-    occurredAt: string;
-  };
-}[OperationalEventType];
+  [K in ExternalEventType]: {
+    id: string;              // Internal unique ID
+    eventId: string;         // External ID (unique within the source)
+    eventType: K;            // E.g., 'inventory.low'
+    source: string;          // E.g., 'warehouse-a'
+    entityType: string;      // E.g., 'product', 'purchase_order'
+    entityId: string;        // The ID of the affected entity
+    occurredAt: string;      // When it happened in the external system
+    receivedAt: string;      // When we ingested it
+    correlationId?: string;
+    schemaVersion: number;
+    payload: ExternalPayload<K>;
+  }
+}[ExternalEventType];
 
-/** A validated event before it has been persisted (no internal id yet). */
+/** A canonical event before it has been persisted (missing internal ID and receivedAt). */
 export type UnpersistedOperationalEvent = {
-  [K in OperationalEventType]: Extract<ValidatedOperationalEvent, { type: K }> & {
-    occurredAt: string;
-  };
-}[OperationalEventType];
-
+  [K in ExternalEventType]: Omit<Extract<OperationalEvent, { eventType: K }>, "id" | "receivedAt">;
+}[ExternalEventType];

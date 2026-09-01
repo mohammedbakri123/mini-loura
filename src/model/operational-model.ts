@@ -23,7 +23,7 @@ export interface OperationalModel {
   getInventoryLevel(productId: string): Promise<InventoryLevel | null>;
 }
 
-export class PostgresOperationalModel implements OperationalModel {
+export class RepositoryOperationalModel implements OperationalModel {
   constructor(
     private readonly deps: {
       productRepository: ProductRepository;

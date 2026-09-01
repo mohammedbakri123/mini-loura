@@ -6,7 +6,11 @@ import { PostgresAuditLedger } from "./db/repositories/audit-repository.js";
 import { EventValidator } from "./sensing/event-validator.js";
 import { InMemoryEventBus } from "./sensing/event-bus.js";
 import { EventIngestionService } from "./sensing/event-ingestion.js";
-import { InMemoryOperationalModel } from "./model/operational-model.js";
+import { RepositoryOperationalModel } from "./model/operational-model.js";
+import { PostgresProductRepository } from "./db/repositories/product-repository.js";
+import { PostgresInventoryRepository } from "./db/repositories/inventory-repository.js";
+import { PostgresSupplierRepository } from "./db/repositories/supplier-repository.js";
+import { PostgresPurchaseOrderRepository } from "./db/repositories/purchase-order-repository.js";
 import { EventPipeline } from "./runtime/event-pipeline.js";
 import { createDefaultToolRegistry } from "./agent/tools.js";
 import { createPurchaseOrderAction } from "./actions/purchase-order-action.js";
@@ -46,7 +50,19 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
   const eventRepository = new PostgresEventRepository(db);
   const caseRepository = new PostgresCaseRepository(db);
   const auditLedger = new PostgresAuditLedger(db);
-  const operationalModel = new InMemoryOperationalModel();
+  
+  const productRepository = new PostgresProductRepository(db);
+  const inventoryRepository = new PostgresInventoryRepository(db);
+  const supplierRepository = new PostgresSupplierRepository(db);
+  const purchaseOrderRepository = new PostgresPurchaseOrderRepository(db);
+
+  const operationalModel = new RepositoryOperationalModel({
+    productRepository,
+    inventoryRepository,
+    supplierRepository,
+    purchaseOrderRepository,
+  });
+
   const bus = new InMemoryEventBus();
 
   const pipeline = new EventPipeline({ operationalModel, caseRepository, auditLedger });

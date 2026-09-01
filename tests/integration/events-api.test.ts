@@ -7,7 +7,11 @@ import { EventIngestionService } from "../../src/sensing/event-ingestion.js";
 import { InMemoryAuditLedger } from "../../src/audit/audit-ledger.js";
 import { InMemoryEventRepository } from "../../src/db/repositories/event-repository.js";
 import { InMemoryCaseRepository } from "../../src/db/repositories/case-repository.js";
-import { InMemoryOperationalModel } from "../../src/model/operational-model.js";
+import { RepositoryOperationalModel } from "../../src/model/operational-model.js";
+import { InMemoryProductRepository } from "../../src/db/repositories/product-repository.js";
+import { InMemoryInventoryRepository } from "../../src/db/repositories/inventory-repository.js";
+import { InMemorySupplierRepository } from "../../src/db/repositories/supplier-repository.js";
+import { InMemoryPurchaseOrderRepository } from "../../src/db/repositories/purchase-order-repository.js";
 import { EventPipeline } from "../../src/runtime/event-pipeline.js";
 
 /**
@@ -21,7 +25,7 @@ describe("events API (integration)", () => {
   let eventRepository: InMemoryEventRepository;
   let caseRepository: InMemoryCaseRepository;
   let auditLedger: InMemoryAuditLedger;
-  let operationalModel: InMemoryOperationalModel;
+  let operationalModel: RepositoryOperationalModel;
   let bus: InMemoryEventBus;
 
   const productId = "9b2f1a34-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -40,8 +44,14 @@ describe("events API (integration)", () => {
     eventRepository = new InMemoryEventRepository();
     caseRepository = new InMemoryCaseRepository();
     auditLedger = new InMemoryAuditLedger();
-    operationalModel = new InMemoryOperationalModel();
     bus = new InMemoryEventBus();
+
+    operationalModel = new RepositoryOperationalModel({
+      productRepository: new InMemoryProductRepository(),
+      inventoryRepository: new InMemoryInventoryRepository(),
+      supplierRepository: new InMemorySupplierRepository(),
+      purchaseOrderRepository: new InMemoryPurchaseOrderRepository(),
+    });
 
     const pipeline = new EventPipeline({
       operationalModel,

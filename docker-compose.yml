@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mini-loura-db
+    environment:
+      POSTGRES_USER: mini_loura
+      POSTGRES_PASSWORD: mini_loura
+      POSTGRES_DB: mini_loura
+    ports:
+      - "5432:5432"
+    volumes:
+      - mini_loura_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mini_loura -d mini_loura"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mini_loura_pgdata:

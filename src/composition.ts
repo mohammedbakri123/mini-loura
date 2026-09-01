@@ -20,6 +20,9 @@ import { FakeReasoningModel } from "./agent/models/fake-reasoning-model.js";
 import type { ReasoningModel } from "./agent/reasoning-model.js";
 import { ImmediateVerifier } from "./verification/verifier.js";
 import { DeterministicPolicyEngine } from "./governance/policy-engine.js";
+import { PostgresPolicyRepository } from "./db/repositories/policy-repository.js";
+import { PostgresGovernanceRepository } from "./db/repositories/governance-repository.js";
+import { GovernanceService } from "./governance/governance-service.js";
 import type { EventBus } from "./sensing/event-bus.js";
 import { OperationalAgent } from "./agent/agent.js";
 import { PostgresAgentRunRepository } from "./db/repositories/agent-run-repository.js";
@@ -43,6 +46,7 @@ export interface AppRuntime {
   actionRegistry: ActionRegistry;
   verifier: ImmediateVerifier;
   policyEngine: DeterministicPolicyEngine;
+  governanceService: GovernanceService;
   reasoningModel: ReasoningModel;
   agent: OperationalAgent;
   databaseHealthCheck: () => Promise<boolean>;
@@ -92,7 +96,21 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
   const actionRegistry = new ActionRegistry();
   actionRegistry.register(createPurchaseOrderAction());
   const verifier = new ImmediateVerifier();
-  const policyEngine = new DeterministicPolicyEngine();
+  
+  const policyRepository = new PostgresPolicyRepository(db);
+  const governanceRepository = new PostgresGovernanceRepository(db);
+
+  const policyEngine = new DeterministicPolicyEngine({
+    actionRegistry,
+    policyRepository,
+  });
+
+  const governanceService = new GovernanceService({
+    policyEngine,
+    governanceRepository,
+    auditLedger,
+  });
+
   const reasoningModel = new FakeReasoningModel();
   const agentRunRepository = new PostgresAgentRunRepository(db);
 
@@ -126,6 +144,7 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     actionRegistry,
     verifier,
     policyEngine,
+    governanceService,
     reasoningModel,
     agent,
     databaseHealthCheck: () => checkDatabaseHealth(db),

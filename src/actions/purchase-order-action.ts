@@ -24,7 +24,7 @@ export class UnimplementedPurchaseOrderExecutor implements ActionExecutor {
     _idempotencyKey: string,
   ): Promise<ExecutionResult> {
     throw new Error(
-      "create_purchase_order execution is not implemented yet (Stage 6: Action Execution).",
+      "CREATE_PURCHASE_ORDER execution is not implemented yet (Stage 6: Action Execution).",
     );
   }
 }
@@ -33,7 +33,7 @@ export function createPurchaseOrderAction(options?: {
   executor?: ActionExecutor;
 }): RegisteredAction {
   return {
-    name: "create_purchase_order",
+    name: "CREATE_PURCHASE_ORDER",
     description: "Create a purchase order to replenish inventory for a product.",
     inputSchema: CreatePurchaseOrderInputSchema,
     expectedSideEffect:
@@ -41,7 +41,7 @@ export function createPurchaseOrderAction(options?: {
     verificationStrategy: "immediate",
     idempotencyKey: (parameters) => {
       const parsed = CreatePurchaseOrderInputSchema.parse(parameters);
-      return `create_purchase_order:${parsed.productId}:${parsed.quantity}:${
+      return `CREATE_PURCHASE_ORDER:${parsed.productId}:${parsed.quantity}:${
         parsed.supplierId ?? "any-supplier"
       }`;
     },

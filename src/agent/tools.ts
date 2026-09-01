@@ -88,7 +88,7 @@ export function createDefaultToolRegistry(): ToolRegistry {
   declare(
     "getPolicy",
     "Read the deterministic policies that apply to a proposed action.",
-    { action: "create_purchase_order" },
+    { action: "CREATE_PURCHASE_ORDER" },
   );
   declare(
     "createPurchaseOrder",

@@ -183,3 +183,9 @@ npm run build
 - **Reasoning Loop & Case Investigation:** `OperationalAgent` wraps a `ReasoningModel` dependency. Upon investigating a case, it builds context, queries the model, and validates the `AgentDecision`. 
 - **Decisions without Authority:** The agent is mathematically locked into producing `PROPOSE_ACTION`, `NO_ACTION`, or `ESCALATE` along with a strictly formatted `ProposedAction`. Execution is **prohibited** inside the reasoning layer. 
 - **Security:** Model runs operate entirely on pre-loaded structure. The agent executes zero side effects. The loop natively persists each decision context into `agent_runs` for accountability.
+
+### Stage 5: Governance & Policy Engine
+- **Deterministic Evaluation:** `AgentDecision` proposals are processed by a `GovernanceService` acting as a gateway before action execution.
+- **Rule Engine:** Built the `DeterministicPolicyEngine` which fetches constraints dynamically from the new `policies` PostgreSQL table, filtering by priority.
+- **Strict Verification:** Unregistered actions or invalid parameters correctly fail closed (`DENY`). Authorized thresholds successfully dictate `ALLOW` vs `REQUIRE_HUMAN_APPROVAL`.
+- **Audit Compliance:** Emits dedicated immutable ledger entries (`POLICY_EVALUATED`, `ACTION_ALLOWED`, `ACTION_DENIED`) for robust traceability into the `governance_evaluations` history.

@@ -4,7 +4,7 @@ import { ActionRegistry, ActionNotRegisteredError } from "../../src/governance/a
 
 const productId = "9b2f1a34-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 
-describe("create_purchase_order action definition", () => {
+describe("CREATE_PURCHASE_ORDER action definition", () => {
   it("rejects invalid input via its schema", () => {
     const bad = CreatePurchaseOrderInputSchema.safeParse({ productId: "not-a-uuid", quantity: 0 });
     expect(bad.success).toBe(false);
@@ -18,7 +18,7 @@ describe("create_purchase_order action definition", () => {
     const params = { productId, quantity: 50 };
     expect(action.idempotencyKey(params)).toBe(action.idempotencyKey(params));
     expect(action.idempotencyKey(params)).toBe(
-      `create_purchase_order:${productId}:50:any-supplier`,
+      `CREATE_PURCHASE_ORDER:${productId}:50:any-supplier`,
     );
   });
 
@@ -38,7 +38,7 @@ describe("create_purchase_order action definition", () => {
   it("unknown actions cannot be fetched from the registry", () => {
     const registry = new ActionRegistry();
     registry.register(createPurchaseOrderAction());
-    expect(registry.has("create_purchase_order")).toBe(true);
+    expect(registry.has("CREATE_PURCHASE_ORDER")).toBe(true);
     expect(() => registry.get("deleteEverything")).toThrowError(ActionNotRegisteredError);
   });
 });

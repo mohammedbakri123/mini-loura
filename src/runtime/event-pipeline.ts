@@ -32,7 +32,7 @@ export class EventPipeline {
 
     await operationalModel.applyEvent(event);
 
-    if (event.type === "inventory.low") {
+    if (event.eventType === "inventory.low") {
       const existing = await caseRepository.findOpenBySubject(event.payload.productId);
       if (existing) {
         // One open case per subject; repeated low-stock events do not spawn duplicates.

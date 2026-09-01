@@ -28,7 +28,7 @@ export class InMemoryOperationalModel implements OperationalModel {
   private readonly inventory = new Map<string, InventoryLevel>();
 
   async applyEvent(event: OperationalEvent): Promise<void> {
-    switch (event.type) {
+    switch (event.eventType) {
       case "inventory.low":
       case "inventory.updated": {
         const existing = this.inventory.get(event.payload.productId);

@@ -8,8 +8,8 @@ export function Overview({ onSelectCase }: { onSelectCase: (id: string) => void 
     try {
       const c = await fetch('/api/cases').then(r => r.json());
       const a = await fetch('/api/audit').then(r => r.json());
-      setCases(c);
-      setAudit(a);
+      if (Array.isArray(c)) setCases(c);
+      if (Array.isArray(a)) setAudit(a);
     } catch (err) {
       console.error(err);
     }

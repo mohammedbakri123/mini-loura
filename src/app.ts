@@ -24,7 +24,6 @@ export interface AppDependencies {
 import fastifyStatic from "@fastify/static";
 import fastifyCors from "@fastify/cors";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 
 export function buildApp(deps: AppDependencies): FastifyInstance {
@@ -54,15 +53,12 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
     }
   }
 
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-
   // Use any to bypass fastify typing mismatch on some setups
   app.register(fastifyCors as any, { origin: true });
 
   // Serve static web app if it exists (in local dev)
   // Vercel serverless functions do not have access to the frontend dist folder.
-  const webDistPath = path.join(__dirname, "../../web/dist");
+  const webDistPath = path.join(process.cwd(), "web/dist");
   if (fs.existsSync(webDistPath)) {
     app.register(fastifyStatic as any, {
       root: webDistPath,

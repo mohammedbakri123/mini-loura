@@ -28,10 +28,46 @@ describe("CREATE_PURCHASE_ORDER action definition", () => {
     expect(action.expectedSideEffect).toContain("purchase order exists");
   });
 
-  it("executor is explicitly unimplemented until Stage 6", async () => {
-    const action = createPurchaseOrderAction();
-    await expect(action.executor.execute({ productId, quantity: 50 }, "key-1")).rejects.toThrowError(
-      /Stage 6/,
+  it("executor successfully creates a PO when valid", async () => {
+    const { InMemoryPurchaseOrderRepository } = await import("../../src/db/repositories/purchase-order-repository.js");
+    const { InMemorySupplierRepository } = await import("../../src/db/repositories/supplier-repository.js");
+    const { PurchaseOrderExecutor } = await import("../../src/actions/purchase-order-action.js");
+    
+    const poRepo = new InMemoryPurchaseOrderRepository();
+    const supplierRepo = new InMemorySupplierRepository();
+    
+    // Add supplier
+    const supplierId = "d9f8e7c6-b5a4-3c2d-1e0f-9a8b7c6d5e4f";
+    await supplierRepo.upsert({ id: supplierId, name: "Test Supplier" });
+
+    const executor = new PurchaseOrderExecutor(poRepo, supplierRepo);
+    const action = createPurchaseOrderAction({ executor });
+
+    const params = { productId, quantity: 50, supplierId };
+    const result = await action.executor.execute(params, action.idempotencyKey(params));
+    
+    expect(result.executed).toBe(true);
+    expect(result.referenceId).toBeDefined();
+
+    const po = await poRepo.findById(result.referenceId!);
+    expect(po?.status).toBe("created");
+    expect(po?.supplierId).toBe(supplierId);
+  });
+
+  it("executor fails if supplierId is missing (no default)", async () => {
+    const { InMemoryPurchaseOrderRepository } = await import("../../src/db/repositories/purchase-order-repository.js");
+    const { InMemorySupplierRepository } = await import("../../src/db/repositories/supplier-repository.js");
+    const { PurchaseOrderExecutor } = await import("../../src/actions/purchase-order-action.js");
+    
+    const poRepo = new InMemoryPurchaseOrderRepository();
+    const supplierRepo = new InMemorySupplierRepository();
+
+    const executor = new PurchaseOrderExecutor(poRepo, supplierRepo);
+    const action = createPurchaseOrderAction({ executor });
+
+    const params = { productId, quantity: 50 };
+    await expect(action.executor.execute(params, action.idempotencyKey(params))).rejects.toThrowError(
+      /supplierId is required/
     );
   });
 

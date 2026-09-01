@@ -3,6 +3,7 @@ import type { EventIngestionService } from "./sensing/event-ingestion.js";
 
 export interface AppDependencies {
   ingestion: EventIngestionService;
+  executionService?: import("./actions/execution-service.js").ExecutionService;
   /** Cheap connectivity probe; /health reports but never throws. */
   databaseHealthCheck: () => Promise<boolean>;
 }
@@ -53,6 +54,33 @@ export function buildApp(deps: AppDependencies): FastifyInstance {
           status: "rejected",
           issues: result.issues,
         });
+    }
+  });
+
+  app.post("/cases/:id/execute", async (request, reply) => {
+    if (!deps.executionService) {
+      return reply.code(501).send({ error: "Execution service not configured" });
+    }
+    const caseId = (request.params as any).id;
+    const body = request.body as any;
+    
+    if (!body?.governanceEvaluationId) {
+      return reply.code(400).send({ error: "governanceEvaluationId is required" });
+    }
+
+    try {
+      const result = await deps.executionService.executeAuthorizedAction(
+        caseId,
+        body.governanceEvaluationId,
+        body.parameters
+      );
+      return reply.code(200).send(result);
+    } catch (error: any) {
+      if (error.name === "ExecutionNotAuthorizedError" || error.name === "ActionNotRegisteredError") {
+        return reply.code(403).send({ error: error.message });
+      }
+      request.log.error(error, "action execution failed");
+      return reply.code(500).send({ error: error.message });
     }
   });
 

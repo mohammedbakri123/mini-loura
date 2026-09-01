@@ -37,7 +37,8 @@ export class GovernanceService {
       caseId,
       agentRunId,
       decision.action.type,
-      evaluation
+      evaluation,
+      decision.action
     );
 
     // 3. Emit Audit Events

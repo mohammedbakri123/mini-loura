@@ -27,6 +27,9 @@ import type { EventBus } from "./sensing/event-bus.js";
 import { OperationalAgent } from "./agent/agent.js";
 import { PostgresAgentRunRepository } from "./db/repositories/agent-run-repository.js";
 import { CaseContextBuilder, OperationalContextBuilder } from "./model/context-builder.js";
+import { PostgresActionExecutionRepository } from "./db/repositories/action-execution-repository.js";
+import { ExecutionService } from "./actions/execution-service.js";
+import { PurchaseOrderExecutor } from "./actions/purchase-order-action.js";
 
 /**
  * Composition root for the PostgreSQL-backed application.
@@ -47,6 +50,7 @@ export interface AppRuntime {
   verifier: ImmediateVerifier;
   policyEngine: DeterministicPolicyEngine;
   governanceService: GovernanceService;
+  executionService: import("./actions/execution-service.js").ExecutionService;
   reasoningModel: ReasoningModel;
   agent: OperationalAgent;
   databaseHealthCheck: () => Promise<boolean>;
@@ -94,7 +98,13 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
   // Boundaries that exist now; wired into the closed loop in stages 4-7.
   const toolRegistry = createDefaultToolRegistry();
   const actionRegistry = new ActionRegistry();
-  actionRegistry.register(createPurchaseOrderAction());
+  
+  const executionRepository = new import("./db/repositories/action-execution-repository.js").PostgresActionExecutionRepository(db);
+
+  actionRegistry.register(createPurchaseOrderAction({
+    executor: new import("./actions/purchase-order-action.js").PurchaseOrderExecutor(purchaseOrderRepository, supplierRepository)
+  }));
+  
   const verifier = new ImmediateVerifier();
   
   const policyRepository = new PostgresPolicyRepository(db);
@@ -109,6 +119,14 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     policyEngine,
     governanceRepository,
     auditLedger,
+  });
+
+  const executionService = new import("./actions/execution-service.js").ExecutionService({
+    actionRegistry,
+    governanceRepo: governanceRepository,
+    executionRepo: executionRepository,
+    auditLedger,
+    caseRepo: caseRepository,
   });
 
   const reasoningModel = new FakeReasoningModel();
@@ -145,6 +163,7 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     verifier,
     policyEngine,
     governanceService,
+    executionService,
     reasoningModel,
     agent,
     databaseHealthCheck: () => checkDatabaseHealth(db),

@@ -11,6 +11,7 @@ async function main(): Promise<void> {
   const runtime = createRuntime(env);
   const app = buildApp({
     ingestion: runtime.ingestion,
+    executionService: runtime.executionService,
     databaseHealthCheck: runtime.databaseHealthCheck,
   });
 

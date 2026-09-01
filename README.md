@@ -143,13 +143,13 @@ npm run build
 - `FakeReasoningModel` + governed agent boundary
 - Deterministic policy engine (`ALLOW` / `DENY` / `REQUIRE_HUMAN_APPROVAL`)
 - Append-only audit ledger (in-memory + PostgreSQL)
-- PostgreSQL repositories for events, cases, audit; SQL migration runner
-- 45 tests (unit + integration), TypeScript strict mode
+- PostgreSQL repositories for events, cases, audit, execution; SQL migration runner
+- 70 tests (unit + integration), TypeScript strict mode
+- `create_purchase_order` executor with structural binding and idempotency
 
 **Interfaces/stubs only (intentionally not yet implemented):**
 
 - Agent tool *handlers* (`getInventory`, `getProduct`, …) — declared, invocation fails loudly
-- `create_purchase_order` executor — action contract (schema, idempotency, verification strategy) fixed; execution throws until Stage 6
 - Verification strategies — `ImmediateVerifier` exists; no checks registered until Stage 7
 - Operational model — in-memory only; DB persistence in Stage 2
 - Case engine — only `OPEN` creation; full lifecycle in Stage 3
@@ -189,3 +189,9 @@ npm run build
 - **Rule Engine:** Built the `DeterministicPolicyEngine` which fetches constraints dynamically from the new `policies` PostgreSQL table, filtering by priority.
 - **Strict Verification:** Unregistered actions or invalid parameters correctly fail closed (`DENY`). Authorized thresholds successfully dictate `ALLOW` vs `REQUIRE_HUMAN_APPROVAL`.
 - **Audit Compliance:** Emits dedicated immutable ledger entries (`POLICY_EVALUATED`, `ACTION_ALLOWED`, `ACTION_DENIED`) for robust traceability into the `governance_evaluations` history.
+
+### Stage 6: Action Execution
+- **Strict Execution Boundary:** An execution attempt requires explicit, cryptographic/structural binding back to a `governance_evaluations` record containing an `ALLOW` decision.
+- **Fail Closed:** Unknown actions, missing governance records, parameter mismatches (tampering attempts), or `DENY`/`REQUIRE_HUMAN_APPROVAL` states result in instant rejection without execution.
+- **Database-Enforced Idempotency:** The `action_executions` table tracks all side-effect executions against a deterministic `idempotency_key` via a unique constraint, protecting against network/process retries and duplicate operations.
+- **Case Lifecycle:** Successfully executing an action automatically transitions the Case to `VERIFYING`, waiting for closed-loop confirmation (Stage 7).

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ActionExecutor, ExecutionResult } from "./action-executor.js";
 import type { RegisteredAction } from "../governance/action-registry.js";
+import type { PurchaseOrderRepository } from "../db/repositories/purchase-order-repository.js";
+import type { SupplierRepository } from "../db/repositories/supplier-repository.js";
 
 export const CreatePurchaseOrderInputSchema = z.object({
   productId: z.string().uuid(),
@@ -10,22 +12,45 @@ export const CreatePurchaseOrderInputSchema = z.object({
 
 export type CreatePurchaseOrderInput = z.infer<typeof CreatePurchaseOrderInputSchema>;
 
-/**
- * Purchase order executor.
- *
- * Intentionally left unimplemented: actual persistence and confirmation flow
- * arrive in the Action Execution stage (Stage 6). The definition, input schema,
- * idempotency rule, and verification strategy are fixed now so governance and
- * verification can be built against a stable action contract.
- */
-export class UnimplementedPurchaseOrderExecutor implements ActionExecutor {
+export class PurchaseOrderExecutor implements ActionExecutor {
+  constructor(
+    private readonly poRepo: PurchaseOrderRepository,
+    private readonly supplierRepo: SupplierRepository,
+  ) {}
+
   async execute(
-    _parameters: unknown,
-    _idempotencyKey: string,
+    parameters: unknown,
+    idempotencyKey: string,
   ): Promise<ExecutionResult> {
-    throw new Error(
-      "CREATE_PURCHASE_ORDER execution is not implemented yet (Stage 6: Action Execution).",
-    );
+    const input = CreatePurchaseOrderInputSchema.parse(parameters);
+
+    if (input.supplierId) {
+      const supplier = await this.supplierRepo.findById(input.supplierId);
+      if (!supplier) {
+        throw new Error(`Supplier not found: ${input.supplierId}`);
+      }
+    } else {
+      // In a real system, you might look up a primary supplier.
+      // If we cannot deterministically pick one, execution fails.
+      throw new Error("Cannot execute: supplierId is required but was not provided, and no deterministic default exists.");
+    }
+
+    const po = await this.poRepo.create({
+      supplierId: input.supplierId,
+      items: [{ productId: input.productId, quantity: input.quantity }],
+      status: "created",
+      idempotencyKey,
+    });
+
+    return {
+      executed: true,
+      referenceId: po.id,
+      details: {
+        poId: po.id,
+        supplierId: po.supplierId,
+        status: po.status,
+      },
+    };
   }
 }
 
@@ -45,6 +70,12 @@ export function createPurchaseOrderAction(options?: {
         parsed.supplierId ?? "any-supplier"
       }`;
     },
-    executor: options?.executor ?? new UnimplementedPurchaseOrderExecutor(),
+    // We throw an error if called without an executor, rather than providing an unimplemented one,
+    // to ensure Stage 6 composition provides a real executor.
+    executor: options?.executor ?? {
+      execute: async () => {
+        throw new Error("No executor provided for CREATE_PURCHASE_ORDER");
+      }
+    },
   };
 }

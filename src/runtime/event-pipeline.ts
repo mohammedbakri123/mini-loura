@@ -1,8 +1,6 @@
 import type { OperationalEvent } from "../domain/events/event.js";
 import type { OperationalModel } from "../model/operational-model.js";
-import type { CaseRepository } from "../db/repositories/case-repository.js";
-import type { AuditLedger } from "../audit/audit-ledger.js";
-import { assertTransition } from "../domain/cases/case-state-machine.js";
+import type { CaseService } from "../domain/cases/case-service.js";
 
 export interface EventPipelineResult {
   caseId: string | null;
@@ -13,53 +11,25 @@ export interface EventPipelineResult {
 /**
  * The event pipeline is the reactive half of the sensing boundary:
  *
- *   published event -> update operational model -> create/update case -> audit
+ *   published event -> update operational model -> evaluate case
  *
- * This is the *foundation* wiring. The full case engine (investigation,
- * agent loop, governance, execution, verification) is implemented in stages 3-7.
+ * This is the *foundation* wiring.
  */
 export class EventPipeline {
   constructor(
     private readonly deps: {
       operationalModel: OperationalModel;
-      caseRepository: CaseRepository;
-      auditLedger: AuditLedger;
+      caseService: CaseService;
     },
   ) {}
 
   async handle(event: OperationalEvent): Promise<EventPipelineResult> {
-    const { operationalModel, caseRepository, auditLedger } = this.deps;
+    const { operationalModel, caseService } = this.deps;
 
+    // 1. Maintain operational reality
     await operationalModel.applyEvent(event);
 
-    if (event.eventType === "inventory.low") {
-      const existing = await caseRepository.findOpenBySubject(event.payload.productId);
-      if (existing) {
-        // One open case per subject; repeated low-stock events do not spawn duplicates.
-        return { caseId: existing.id, caseCreated: false, caseStatus: existing.status };
-      }
-
-      // Opening a case starts in OPEN; the case engine moves it forward.
-      const created = await caseRepository.create({
-        type: "inventory_replenishment",
-        status: "OPEN",
-        title: `Replenish inventory for product ${event.payload.productId}`,
-        subjectId: event.payload.productId,
-      });
-      // Sanity-check that OPEN is a valid starting state for future transitions.
-      assertTransition(created.status, "INVESTIGATING");
-
-      await auditLedger.append({
-        type: "CASE_CREATED",
-        actor: "case-engine",
-        caseId: created.id,
-        eventId: event.id,
-        data: { type: created.type, subjectId: created.subjectId },
-      });
-
-      return { caseId: created.id, caseCreated: true, caseStatus: created.status };
-    }
-
-    return { caseId: null, caseCreated: false, caseStatus: null };
+    // 2. Drive cases based on reality
+    return await caseService.evaluateEvent(event);
   }
 }

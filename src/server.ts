@@ -37,8 +37,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   try {
-    await app.listen({ port: env.PORT, host: "0.0.0.0" });
-    console.log(`mini-loura listening on port ${env.PORT}`);
+    const port = env.PORT ?? 3000;
+    await app.listen({ port, host: "0.0.0.0" });
+    console.log(`mini-loura listening on port ${port}`);
   } catch (error) {
     console.error("Failed to start server:", error);
     await runtime.close();

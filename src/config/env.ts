@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: z.coerce.number().int().positive().optional().catch(undefined),
   DATABASE_URL: z
     .string()
     .default("postgres://mini_loura:mini_loura@localhost:5432/mini_loura"),

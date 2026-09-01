@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "concurrently \"tsx watch src/server.ts\" \"npm run dev --prefix web\"",
-    "build": "tsc && npm run build --prefix web",
+    "build": "npm run build --prefix web && npm run db:migrate",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit && npm run typecheck --prefix web",
     "test": "vitest run",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@fastify/cors": "^11.3.0",
     "@fastify/static": "^10.1.3",
+    "@google/genai": "^2.20.0",
     "dotenv": "^17.2.1",
     "fastify": "^5.3.1",
     "pg": "^8.16.3",

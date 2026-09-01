@@ -1,4 +1,4 @@
-import { loadEnv, type Env } from "./config/env.js";
+import { loadEnv, reasoningModelKind, type Env } from "./config/env.js";
 import { PgDatabase, checkDatabaseHealth, type Database } from "./db/client.js";
 import { PostgresEventRepository } from "./db/repositories/event-repository.js";
 import { PostgresCaseRepository } from "./db/repositories/case-repository.js";
@@ -17,6 +17,7 @@ import { createDefaultToolRegistry } from "./agent/tools.js";
 import { createPurchaseOrderAction } from "./actions/purchase-order-action.js";
 import { ActionRegistry } from "./governance/action-registry.js";
 import { FakeReasoningModel } from "./agent/models/fake-reasoning-model.js";
+import { GeminiReasoningModel } from "./agent/models/gemini-reasoning-model.js";
 import type { ReasoningModel } from "./agent/reasoning-model.js";
 import { ImmediateVerifier } from "./verification/verifier.js";
 import { PostgresVerificationRepository } from "./db/repositories/verification-repository.js";
@@ -159,7 +160,10 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     auditLedger,
   });
 
-  const reasoningModel = new FakeReasoningModel();
+  const kind = reasoningModelKind(env);
+  const reasoningModel = kind === "llm" && env.LLM_API_KEY
+    ? new GeminiReasoningModel(env.LLM_API_KEY, env.LLM_MODEL || "gemini-2.5-flash")
+    : new FakeReasoningModel();
   const agentRunRepository = new PostgresAgentRunRepository(db);
 
   const operationalContextBuilder = new OperationalContextBuilder({

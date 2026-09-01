@@ -17,7 +17,17 @@ export class PgDatabase implements Database {
   private readonly pool: Pool;
 
   constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString, max: 10 });
+    const isLocalhost = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+    this.pool = new Pool({ 
+      connectionString, 
+      max: 10,
+      ssl: isLocalhost ? false : { rejectUnauthorized: false }
+    });
+    
+    // Prevent unhandled promise rejections on background connection errors
+    this.pool.on("error", (err) => {
+      console.error("Unexpected error on idle database client", err);
+    });
   }
 
   query<T = Record<string, unknown>>(text: string, values?: unknown[]): Promise<{ rows: T[] }> {

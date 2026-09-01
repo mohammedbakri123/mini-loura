@@ -91,7 +91,7 @@ describe("events API (integration)", () => {
     // Event persisted
     const stored = await eventRepository.findById(eventId);
     expect(stored).not.toBeNull();
-    expect(stored?.type).toBe("inventory.low");
+    expect(stored?.eventType).toBe("inventory.low");
 
     // Case created
     const cases = await caseRepository.listRecent(10);
@@ -112,15 +112,19 @@ describe("events API (integration)", () => {
     expect(auditTypes).toContain("CASE_CREATED");
   });
 
-  it("POST /events deduplicates by external event id", async () => {
+  it("POST /events deduplicates by composite identity (source, eventId)", async () => {
     const event = inventoryLowEvent();
+    
+    // First attempt -> accepted
     const first = await app.inject({ method: "POST", url: "/events", payload: event });
-    const second = await app.inject({ method: "POST", url: "/events", payload: event });
-
     expect(first.statusCode).toBe(202);
+
+    // Second attempt -> duplicate
+    const second = await app.inject({ method: "POST", url: "/events", payload: event });
     expect(second.statusCode).toBe(200);
     expect(second.json().status).toBe("duplicate");
 
+    // We only expect one case created for this event flow
     const cases = await caseRepository.listRecent(10);
     expect(cases.filter((c) => c.subjectId === productId)).toHaveLength(1);
   });
@@ -141,6 +145,7 @@ describe("events API (integration)", () => {
     expect(second.statusCode).toBe(202);
 
     const cases = await caseRepository.listRecent(10);
+    // Even though multiple low-stock events came through, only one case should remain OPEN
     expect(cases.filter((c) => c.subjectId === productId)).toHaveLength(1);
   });
 
@@ -157,5 +162,25 @@ describe("events API (integration)", () => {
 
     const rejected = (await auditLedger.list()).filter((e) => e.type === "EVENT_REJECTED");
     expect(rejected).toHaveLength(1);
+  });
+
+  it("POST /events handles database failures gracefully with 503", async () => {
+    // We simulate a database failure by mocking the insert method
+    const originalInsert = eventRepository.insert;
+    eventRepository.insert = async () => {
+      throw new Error("Simulated Database Failure");
+    };
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/events",
+      payload: inventoryLowEvent(),
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json().status).toBe("error");
+
+    // Restore the original method
+    eventRepository.insert = originalInsert.bind(eventRepository);
   });
 });

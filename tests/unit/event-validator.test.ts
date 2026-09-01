@@ -14,12 +14,16 @@ const validInventoryLow = {
 };
 
 describe("EventValidator", () => {
-  it("accepts a valid inventory.low event", () => {
+  it("accepts a valid inventory.low event and normalizes it", () => {
     const result = validator.validate(validInventoryLow);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.event.type).toBe("inventory.low");
+      expect(result.event.eventType).toBe("inventory.low");
       expect(result.event.eventId).toBe("evt-001");
+      expect(result.event.source).toBe("warehouse");
+      expect(result.event.entityType).toBe("product");
+      expect(result.event.entityId).toBe(validInventoryLow.payload.productId);
+      expect(result.event.schemaVersion).toBe(1);
     }
   });
 
@@ -68,15 +72,20 @@ describe("EventValidator", () => {
   });
 
   it("validates purchase_order.received payload", () => {
+    const purchaseOrderId = "9b2f1a34-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
     const result = validator.validate({
       type: "purchase_order.received",
       eventId: "evt-002",
       payload: {
-        purchaseOrderId: "9b2f1a34-1c4d-4e5f-8a9b-0c1d2e3f4a5b",
+        purchaseOrderId,
         quantityReceived: 50,
       },
     });
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.event.entityType).toBe("purchase_order");
+      expect(result.event.entityId).toBe(purchaseOrderId);
+    }
   });
 
   it("rejects purchase_order.received with zero quantity", () => {

@@ -166,3 +166,6 @@ npm run build
 7. **Closed-Loop Verification** — immediate/delayed/polling strategies, drift detection
 8. **Audit Ledger** — full event coverage, query API
 
+### Event Identity Scope & Delivery Semantics
+- **Identity:** Event identity is strictly defined by the composite tuple `(source, eventId)`. The database enforces this with a composite unique constraint to guarantee idempotent deduplication across restarts.
+- **Delivery:** The internal EventBus currently implements process-local, at-most-once delivery. Subscribing components react *after* the event is durably recorded.

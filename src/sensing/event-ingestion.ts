@@ -2,18 +2,19 @@ import { randomUUID } from "node:crypto";
 import type { OperationalEvent } from "../domain/events/event.js";
 import { EventValidator } from "./event-validator.js";
 import type { EventBus } from "./event-bus.js";
-import type { EventRepository } from "../db/repositories/event-repository.js";
+import { type EventRepository, DuplicateEventError } from "../db/repositories/event-repository.js";
 import type { AuditLedger } from "../audit/audit-ledger.js";
 
 export type IngestionResult =
   | { status: "accepted"; eventId: string }
-  | { status: "duplicate"; eventId: string }
-  | { status: "rejected"; issues: unknown[] };
+  | { status: "duplicate"; source: string; eventId: string }
+  | { status: "rejected"; issues: unknown[] }
+  | { status: "error"; message: string };
 
 /**
  * Ingestion pipeline:
  *
- *   validate -> deduplicate -> persist -> publish
+ *   validate -> normalize -> deduplicate (via DB constraint) -> persist -> publish
  *
  * The event bus subscribers (operational model, cases, ...) react *after* the
  * event is durably recorded.
@@ -45,26 +46,36 @@ export class EventIngestionService {
 
     const validated = validation.event;
 
-    // Deduplicate on the external event id before persisting anything.
-    if (await eventRepository.existsByExternalId(validated.eventId)) {
-      return { status: "duplicate", eventId: validated.eventId };
-    }
-
-    const event: OperationalEvent = {
+    // TypeScript narrowing: we know it is a full operational event now
+    const event = {
       ...validated,
       id: randomUUID(),
       receivedAt: new Date().toISOString(),
-    };
+    } as OperationalEvent;
 
-    await eventRepository.insert(event);
+    try {
+      await eventRepository.insert(event);
+    } catch (err) {
+      if (err instanceof DuplicateEventError) {
+        return { status: "duplicate", source: event.source, eventId: event.eventId };
+      }
+      // Re-throw any other database error so the HTTP layer correctly 500s.
+      throw err;
+    }
+
+    // Persisted successfully, log to audit.
     await auditLedger.append({
       type: "EVENT_RECEIVED",
       actor: "sensing",
       caseId: null,
       eventId: event.id,
-      data: { eventType: event.type, externalId: event.eventId },
+      data: { eventType: event.eventType, externalId: event.eventId },
     });
 
+    // Publish to subscribers.
+    // In our current semantics, this is process-local at-most-once delivery.
+    // If a subscriber throws, we let the exception bubble up to log it,
+    // but the event was already durably recorded.
     await bus.publish(event);
 
     return { status: "accepted", eventId: event.id };

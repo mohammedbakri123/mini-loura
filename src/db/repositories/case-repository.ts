@@ -1,9 +1,5 @@
-import type {
-  CaseRecord,
-  CaseStatus,
-  CaseType,
-  NewCaseRecord,
-} from "../../domain/cases/case.js";
+import crypto from "node:crypto";
+import type { CaseRecord, CaseStatus, CaseType, NewCaseRecord, CasePriority } from "../../domain/cases/case.js";
 
 export interface CaseStatusChange {
   fromStatus: CaseStatus | null;
@@ -15,15 +11,15 @@ export interface CaseStatusChange {
 export interface CaseRepository {
   create(input: NewCaseRecord): Promise<CaseRecord>;
   findById(id: string): Promise<CaseRecord | null>;
-  /** Find the open (non-terminal) case for a subject, e.g. an open replenishment case for a product. */
-  findOpenBySubject(subjectId: string): Promise<CaseRecord | null>;
-  /** Transition status; the caller must have validated via the case state machine. */
+  findOpenBySubject(subjectType: string, subjectId: string): Promise<CaseRecord | null>;
   updateStatus(id: string, to: CaseStatus, reason?: string): Promise<CaseRecord>;
   listStatusHistory(caseId: string): Promise<CaseStatusChange[]>;
   listRecent(limit: number): Promise<CaseRecord[]>;
+  addEvent(caseId: string, eventId: string): Promise<void>;
+  getAssociatedEvents(caseId: string): Promise<string[]>;
 }
 
-const OPEN_STATUSES: readonly CaseStatus[] = [
+const OPEN_STATUSES = [
   "OPEN",
   "INVESTIGATING",
   "ACTION_REQUIRED",
@@ -38,12 +34,29 @@ export class PostgresCaseRepository implements CaseRepository {
   constructor(private readonly db: import("../client.js").Database) {}
 
   async create(input: NewCaseRecord): Promise<CaseRecord> {
-    const result = await this.db.query<CaseRow>(
-      `INSERT INTO cases (type, status, title, subject_id)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [input.type, input.status, input.title, input.subjectId],
-    );
-    return mapRow(result.rows[0]!);
+    try {
+      const result = await this.db.query<CaseRow>(
+        `INSERT INTO cases (type, status, priority, title, subject_type, subject_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [input.type, input.status, input.priority, input.title, input.subjectType, input.subjectId],
+      );
+      
+      const record = mapRow(result.rows[0]!);
+      
+      await this.db.query(
+        `INSERT INTO case_status_history (case_id, from_status, to_status, reason)
+         VALUES ($1, $2, $3, $4)`,
+        [record.id, null, record.status, "Case opened"],
+      );
+      
+      return record;
+    } catch (err: any) {
+      if (err.code === "23505" && err.constraint === "idx_cases_active_subject") {
+        const existing = await this.findOpenBySubject(input.subjectType, input.subjectId);
+        if (existing) return existing;
+      }
+      throw err;
+    }
   }
 
   async findById(id: string): Promise<CaseRecord | null> {
@@ -51,13 +64,13 @@ export class PostgresCaseRepository implements CaseRepository {
     return result.rows[0] ? mapRow(result.rows[0]) : null;
   }
 
-  async findOpenBySubject(subjectId: string): Promise<CaseRecord | null> {
+  async findOpenBySubject(subjectType: string, subjectId: string): Promise<CaseRecord | null> {
     const result = await this.db.query<CaseRow>(
       `SELECT * FROM cases
-       WHERE subject_id = $1 AND status = ANY($2::text[])
+       WHERE subject_type = $1 AND subject_id = $2 AND status = ANY($3::text[])
        ORDER BY created_at DESC
        LIMIT 1`,
-      [subjectId, [...OPEN_STATUSES]],
+      [subjectType, subjectId, [...OPEN_STATUSES]],
     );
     return result.rows[0] ? mapRow(result.rows[0]) : null;
   }
@@ -106,14 +119,31 @@ export class PostgresCaseRepository implements CaseRepository {
     );
     return result.rows.map(mapRow);
   }
+
+  async addEvent(caseId: string, eventId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO case_events (case_id, event_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [caseId, eventId]
+    );
+  }
+
+  async getAssociatedEvents(caseId: string): Promise<string[]> {
+    const result = await this.db.query<{event_id: string}>(
+      `SELECT event_id FROM case_events WHERE case_id = $1 ORDER BY created_at ASC`,
+      [caseId]
+    );
+    return result.rows.map(r => r.event_id);
+  }
 }
 
 interface CaseRow {
   id: string;
   type: CaseType;
   status: CaseStatus;
+  priority: CasePriority;
   title: string;
-  subject_id: string | null;
+  subject_type: string;
+  subject_id: string;
   created_at: Date;
   updated_at: Date;
   resolved_at: Date | null;
@@ -130,14 +160,20 @@ interface HistoryRow {
 export class InMemoryCaseRepository implements CaseRepository {
   private readonly cases = new Map<string, CaseRecord>();
   private readonly history = new Map<string, CaseStatusChange[]>();
+  private readonly events = new Map<string, Set<string>>();
 
   async create(input: NewCaseRecord): Promise<CaseRecord> {
+    const existing = await this.findOpenBySubject(input.subjectType, input.subjectId);
+    if (existing) return existing;
+
     const now = new Date().toISOString();
     const record: CaseRecord = {
       id: crypto.randomUUID(),
       type: input.type,
       status: input.status,
+      priority: input.priority,
       title: input.title,
+      subjectType: input.subjectType,
       subjectId: input.subjectId,
       createdAt: now,
       updatedAt: now,
@@ -147,6 +183,7 @@ export class InMemoryCaseRepository implements CaseRepository {
     this.history.set(record.id, [
       { fromStatus: null, toStatus: record.status, changedAt: now },
     ]);
+    this.events.set(record.id, new Set());
     return record;
   }
 
@@ -154,9 +191,9 @@ export class InMemoryCaseRepository implements CaseRepository {
     return this.cases.get(id) ?? null;
   }
 
-  async findOpenBySubject(subjectId: string): Promise<CaseRecord | null> {
+  async findOpenBySubject(subjectType: string, subjectId: string): Promise<CaseRecord | null> {
     const matches = [...this.cases.values()]
-      .filter((c) => c.subjectId === subjectId && OPEN_STATUSES.includes(c.status))
+      .filter((c) => c.subjectType === subjectType && c.subjectId === subjectId && OPEN_STATUSES.includes(c.status))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return matches[0] ?? null;
   }
@@ -190,6 +227,18 @@ export class InMemoryCaseRepository implements CaseRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
   }
+
+  async addEvent(caseId: string, eventId: string): Promise<void> {
+    const caseEvents = this.events.get(caseId);
+    if (caseEvents) {
+      caseEvents.add(eventId);
+    }
+  }
+
+  async getAssociatedEvents(caseId: string): Promise<string[]> {
+    const caseEvents = this.events.get(caseId);
+    return caseEvents ? Array.from(caseEvents) : [];
+  }
 }
 
 function mapRow(row: CaseRow): CaseRecord {
@@ -197,8 +246,10 @@ function mapRow(row: CaseRow): CaseRecord {
     id: row.id,
     type: row.type,
     status: row.status,
+    priority: row.priority,
     title: row.title,
-    subjectId: row.subject_id ?? "",
+    subjectType: row.subject_type,
+    subjectId: row.subject_id,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     resolvedAt: row.resolved_at ? new Date(row.resolved_at).toISOString() : null,

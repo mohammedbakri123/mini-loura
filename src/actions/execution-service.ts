@@ -61,6 +61,7 @@ export class ExecutionService {
     if (execution.status === "SUCCEEDED") {
       return {
         executed: true,
+        executionId: execution.id,
         referenceId: execution.referenceId!,
         details: { replay: true },
       };
@@ -111,7 +112,9 @@ export class ExecutionService {
         await this.deps.caseRepo.updateStatus(caseId, "VERIFYING", "Action executed, awaiting verification");
       }
 
-      return result;
+      // Include the execution id so the closed loop (Stage 7 verification) can
+      // independently verify this exact execution against authoritative state.
+      return { ...result, executionId: execution.id };
     } catch (error: unknown) {
       // Note: If error happens after DB commit but before this block, 
       // the next retry will replay the executor and succeed safely thanks to idempotent repo methods.

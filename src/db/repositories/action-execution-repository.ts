@@ -25,6 +25,7 @@ export interface NewActionExecution {
 
 export interface ActionExecutionRepository {
   createIfAbsent(input: NewActionExecution): Promise<{ record: ActionExecutionRecord; created: boolean }>;
+  findById(id: string): Promise<ActionExecutionRecord | null>;
   findByIdempotencyKey(key: string): Promise<ActionExecutionRecord | null>;
   updateStatus(id: string, status: ActionExecutionStatus, referenceId?: string): Promise<ActionExecutionRecord>;
 }
@@ -62,6 +63,14 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
       throw new Error(`Failed to create or find action execution for idempotency key: ${input.idempotencyKey}`);
     }
     return { record: existing, created: false };
+  }
+
+  async findById(id: string): Promise<ActionExecutionRecord | null> {
+    const result = await this.db.query<ActionExecutionRow>(
+      `SELECT * FROM action_executions WHERE id = $1`,
+      [id]
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
   }
 
   async findByIdempotencyKey(key: string): Promise<ActionExecutionRecord | null> {
@@ -108,6 +117,10 @@ export class InMemoryActionExecutionRepository implements ActionExecutionReposit
     };
     this.records.set(record.id, record);
     return { record, created: true };
+  }
+
+  async findById(id: string): Promise<ActionExecutionRecord | null> {
+    return this.records.get(id) ?? null;
   }
 
   async findByIdempotencyKey(key: string): Promise<ActionExecutionRecord | null> {

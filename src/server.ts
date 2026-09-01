@@ -12,6 +12,7 @@ async function main(): Promise<void> {
   const app = buildApp({
     ingestion: runtime.ingestion,
     executionService: runtime.executionService,
+    verificationService: runtime.verificationService,
     databaseHealthCheck: runtime.databaseHealthCheck,
   });
 

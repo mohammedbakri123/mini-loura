@@ -19,6 +19,9 @@ import { ActionRegistry } from "./governance/action-registry.js";
 import { FakeReasoningModel } from "./agent/models/fake-reasoning-model.js";
 import type { ReasoningModel } from "./agent/reasoning-model.js";
 import { ImmediateVerifier } from "./verification/verifier.js";
+import { PostgresVerificationRepository } from "./db/repositories/verification-repository.js";
+import { PurchaseOrderVerificationStrategy } from "./verification/strategies/purchase-order-verification-strategy.js";
+import { VerificationService } from "./verification/verification-service.js";
 import { DeterministicPolicyEngine } from "./governance/policy-engine.js";
 import { PostgresPolicyRepository } from "./db/repositories/policy-repository.js";
 import { PostgresGovernanceRepository } from "./db/repositories/governance-repository.js";
@@ -51,6 +54,7 @@ export interface AppRuntime {
   policyEngine: DeterministicPolicyEngine;
   governanceService: GovernanceService;
   executionService: import("./actions/execution-service.js").ExecutionService;
+  verificationService: VerificationService;
   reasoningModel: ReasoningModel;
   agent: OperationalAgent;
   databaseHealthCheck: () => Promise<boolean>;
@@ -106,7 +110,14 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
   }));
   
   const verifier = new ImmediateVerifier();
-  
+
+  // Stage 7: closed-loop verification against authoritative state.
+  const verificationRepository = new PostgresVerificationRepository(db);
+  verifier.registerStrategy(
+    "CREATE_PURCHASE_ORDER",
+    new PurchaseOrderVerificationStrategy(purchaseOrderRepository),
+  );
+
   const policyRepository = new PostgresPolicyRepository(db);
   const governanceRepository = new PostgresGovernanceRepository(db);
 
@@ -127,6 +138,16 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     executionRepo: executionRepository,
     auditLedger,
     caseRepo: caseRepository,
+  });
+
+  const verificationService = new VerificationService({
+    verifier,
+    verificationRepo: verificationRepository,
+    executionRepo: executionRepository,
+    governanceRepo: governanceRepository,
+    caseRepo: caseRepository,
+    caseService,
+    auditLedger,
   });
 
   const reasoningModel = new FakeReasoningModel();
@@ -161,6 +182,7 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
     toolRegistry,
     actionRegistry,
     verifier,
+    verificationService,
     policyEngine,
     governanceService,
     executionService,

@@ -1,7 +1,7 @@
 /**
  * Purchase order domain shape.
  *
- * The purchase order lifecycle (draft -> confirmed -> received / cancelled) is
+ * The purchase order lifecycle (draft -> created -> confirmed -> received / cancelled) is
  * owned by the operational model and the action execution layer (Stage 6).
  */
 export type PurchaseOrderStatus =
@@ -11,12 +11,16 @@ export type PurchaseOrderStatus =
   | "received"
   | "cancelled";
 
+export interface PurchaseOrderItem {
+  productId: string;
+  quantity: number;
+}
+
 export interface PurchaseOrder {
   id: string;
-  productId: string;
   supplierId: string | null;
-  quantity: number;
   status: PurchaseOrderStatus;
+  items: PurchaseOrderItem[];
   idempotencyKey: string | null;
   createdAt: string;
   updatedAt: string;

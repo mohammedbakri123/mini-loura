@@ -1,9 +1,9 @@
-import type { PurchaseOrder, PurchaseOrderStatus } from "../../domain/purchase-orders/purchase-order.js";
+import type { PurchaseOrder, PurchaseOrderStatus, PurchaseOrderItem } from "../../domain/purchase-orders/purchase-order.js";
 
 export interface NewPurchaseOrder {
-  productId: string;
+  id?: string; // Optional for idempotency explicitly passed
   supplierId: string | null;
-  quantity: number;
+  items: PurchaseOrderItem[];
   status: PurchaseOrderStatus;
   idempotencyKey: string | null;
 }
@@ -15,8 +15,3 @@ export interface PurchaseOrderRepository {
   updateStatus(id: string, status: PurchaseOrderStatus): Promise<PurchaseOrder>;
   listOpen(): Promise<PurchaseOrder[]>;
 }
-
-/**
- * Interface only for now: the create/confirm flow is implemented in
- * Stage 6 (Action Execution). The table already exists via migration 001.
- */

@@ -169,3 +169,7 @@ npm run build
 ### Event Identity Scope & Delivery Semantics
 - **Identity:** Event identity is strictly defined by the composite tuple `(source, eventId)`. The database enforces this with a composite unique constraint to guarantee idempotent deduplication across restarts.
 - **Delivery:** The internal EventBus currently implements process-local, at-most-once delivery. Subscribing components react *after* the event is durably recorded.
+
+### Stage 2: Operational Model (Source of Truth)
+- **Historical Events vs Derived State:** Events stored in `events` are the historical facts. The tables `products`, `inventory`, `suppliers`, and `purchase_orders` represent the derived current operational reality. 
+- **Context Builder:** The `OperationalContextBuilder` pulls together related operational state (like a product and its open purchase orders) to give the agent accurate context without making it hallucinate reality. The LLM is NEVER the source of truth for the warehouse's current state.

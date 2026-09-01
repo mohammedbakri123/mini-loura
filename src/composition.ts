@@ -9,6 +9,7 @@ import { EventIngestionService } from "./sensing/event-ingestion.js";
 import { RepositoryOperationalModel } from "./model/operational-model.js";
 import { PostgresProductRepository } from "./db/repositories/product-repository.js";
 import { PostgresInventoryRepository } from "./db/repositories/inventory-repository.js";
+import { CaseService } from "./domain/cases/case-service.js";
 import { PostgresSupplierRepository } from "./db/repositories/supplier-repository.js";
 import { PostgresPurchaseOrderRepository } from "./db/repositories/purchase-order-repository.js";
 import { EventPipeline } from "./runtime/event-pipeline.js";
@@ -65,7 +66,12 @@ export function createRuntime(env: Env = loadEnv()): AppRuntime {
 
   const bus = new InMemoryEventBus();
 
-  const pipeline = new EventPipeline({ operationalModel, caseRepository, auditLedger });
+  const caseService = new CaseService({
+    caseRepository,
+    auditLedger,
+  });
+
+  const pipeline = new EventPipeline({ operationalModel, caseService });
   bus.subscribe(async (event) => {
     await pipeline.handle(event);
   });

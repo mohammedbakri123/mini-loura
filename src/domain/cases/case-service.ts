@@ -90,7 +90,7 @@ export class CaseService {
 
     await auditLedger.append({
       type: toStatus === "RESOLVED" ? "CASE_RESOLVED" : 
-            toStatus === "REOPENED" ? "CASE_REOPENED" : "CASE_STATUS_CHANGED",
+            toStatus === "REOPENED" ? "CASE_REOPENED" : "CASE_STATE_CHANGED",
       actor: "case-engine",
       caseId: updated.id,
       eventId: null,

@@ -8,10 +8,6 @@ import type { InventoryLevel } from "../domain/inventory/inventory.js";
 import type { Supplier } from "../domain/suppliers/supplier.js";
 import type { PurchaseOrder } from "../domain/purchase-orders/purchase-order.js";
 
-/**
- * AgentContext is the *only* information channel into the reasoning model.
- * Everything the agent is allowed to know must be explicitly included here.
- */
 export type AgentContext = {
   case: CaseRecord;
   operationalState: OperationalSnapshot;
@@ -28,11 +24,6 @@ export interface ContextBuilderInput {
   availableTools: ToolDefinition[];
 }
 
-/**
- * Builds the agent context. In later stages this will select only the relevant
- * slice of events and policies for the case; today it passes through what the
- * caller provides.
- */
 export function buildAgentContext(input: ContextBuilderInput): AgentContext {
   return {
     case: input.case,
@@ -43,9 +34,6 @@ export function buildAgentContext(input: ContextBuilderInput): AgentContext {
   };
 }
 
-/**
- * Stage 2 Context output.
- */
 export interface ProductOperationalContext {
   product: Product;
   inventory: InventoryLevel | null;
@@ -53,10 +41,6 @@ export interface ProductOperationalContext {
   openPurchaseOrders: PurchaseOrder[];
 }
 
-/**
- * OperationalContextBuilder pulls together structured operational truth from
- * the Postgres repositories without invoking any LLMs or guessing state.
- */
 export class OperationalContextBuilder {
   constructor(
     private readonly deps: {
@@ -73,8 +57,6 @@ export class OperationalContextBuilder {
 
     const inventory = await this.deps.inventoryRepository.findByProductId(productId);
     
-    // Simplistic supplier retrieval for now, perhaps linked via POs or Inventory in reality
-    // In our simplified model, we'll try to find an active PO and see its supplier.
     const allPos = await this.deps.purchaseOrderRepository.listOpen();
     const productPos = allPos.filter(po => po.items.some(i => i.productId === productId));
     
@@ -88,6 +70,39 @@ export class OperationalContextBuilder {
       inventory,
       supplier,
       openPurchaseOrders: productPos,
+    };
+  }
+}
+
+export interface CaseContext {
+  caseRecord: CaseRecord;
+  relatedEvents: string[]; // Event IDs
+  operationalContext: ProductOperationalContext | null; // Expandable for other subject types
+}
+
+export class CaseContextBuilder {
+  constructor(
+    private readonly deps: {
+      caseRepository: import("../db/repositories/case-repository.js").CaseRepository;
+      operationalContextBuilder: OperationalContextBuilder;
+    }
+  ) {}
+
+  async build(caseId: string): Promise<CaseContext | null> {
+    const caseRecord = await this.deps.caseRepository.findById(caseId);
+    if (!caseRecord) return null;
+
+    const relatedEvents = await this.deps.caseRepository.getAssociatedEvents(caseId);
+
+    let operationalContext: ProductOperationalContext | null = null;
+    if (caseRecord.subjectType === "product") {
+      operationalContext = await this.deps.operationalContextBuilder.buildForProduct(caseRecord.subjectId);
+    }
+
+    return {
+      caseRecord,
+      relatedEvents,
+      operationalContext,
     };
   }
 }

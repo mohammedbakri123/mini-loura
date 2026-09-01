@@ -12,6 +12,7 @@ import { InMemoryProductRepository } from "../../src/db/repositories/product-rep
 import { InMemoryInventoryRepository } from "../../src/db/repositories/inventory-repository.js";
 import { InMemorySupplierRepository } from "../../src/db/repositories/supplier-repository.js";
 import { InMemoryPurchaseOrderRepository } from "../../src/db/repositories/purchase-order-repository.js";
+import { CaseService } from "../../src/domain/cases/case-service.js";
 import { EventPipeline } from "../../src/runtime/event-pipeline.js";
 
 /**
@@ -53,10 +54,14 @@ describe("events API (integration)", () => {
       purchaseOrderRepository: new InMemoryPurchaseOrderRepository(),
     });
 
-    const pipeline = new EventPipeline({
-      operationalModel,
+    const caseService = new CaseService({
       caseRepository,
       auditLedger,
+    });
+
+    const pipeline = new EventPipeline({
+      operationalModel,
+      caseService,
     });
     bus.subscribe((event) => pipeline.handle(event));
 
